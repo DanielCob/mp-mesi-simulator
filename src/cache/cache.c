@@ -79,3 +79,27 @@ CacheLine* cache_get_line(Cache* cache, int addr) {
     }
     return NULL;
 }
+
+MESI_State cache_get_state(Cache* cache, int addr) {
+    CacheLine* line = cache_get_line(cache, addr);
+    return line ? line->state : I;
+}
+
+void cache_set_state(Cache* cache, int addr, MESI_State new_state) {
+    CacheLine* line = cache_get_line(cache, addr);
+    if (line) {
+        line->state = new_state;
+    }
+}
+
+double cache_get_data(Cache* cache, int addr) {
+    CacheLine* line = cache_get_line(cache, addr);
+    return line ? line->data[0] : 0.0;
+}
+
+void cache_set_data(Cache* cache, int addr, double data) {
+    CacheLine* line = cache_get_line(cache, addr);
+    if (line) {
+        line->data[0] = data;
+    }
+}

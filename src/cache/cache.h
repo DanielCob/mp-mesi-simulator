@@ -29,4 +29,10 @@ double cache_read(Cache* cache, int addr, int pe_id);
 void cache_write(Cache* cache, int addr, double value, int pe_id);
 CacheLine* cache_get_line(Cache* cache, int addr);
 
+// Funciones auxiliares para el protocolo MESI
+MESI_State cache_get_state(Cache* cache, int addr);
+void cache_set_state(Cache* cache, int addr, MESI_State new_state);
+double cache_get_data(Cache* cache, int addr);
+void cache_set_data(Cache* cache, int addr, double data);
+
 #endif
