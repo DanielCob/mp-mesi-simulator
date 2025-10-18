@@ -2,11 +2,12 @@
 #define PE_H
 
 #include "cache/cache.h"
+#include "pe/registers.h"
 #include <pthread.h>
 
 typedef struct {
     int id;
-    double regs[8];
+    RegisterFile rf;  // Banco de registros
     Cache* cache;
 } PE;
 

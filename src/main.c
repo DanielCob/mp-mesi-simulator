@@ -27,6 +27,7 @@ int main() {
     for (int i = 0; i < NUM_PES; i++) {
         pes[i].id = i;
         pes[i].cache = &caches[i];
+        reg_init(&pes[i].rf);  // Inicializar banco de registros
         pthread_create(&threads[i], NULL, pe_run, &pes[i]);
     }
 

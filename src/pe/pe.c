@@ -1,80 +1,81 @@
 #include "pe.h"
+#include "pe/registers.h"
+#include "pe/isa.h"
 #include <stdio.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 void* pe_run(void* arg) {
     PE* pe = (PE*)arg;
     printf("[PE%d] Starting thread...\n", pe->id);
     
-    // Escenario para demostrar diferentes transiciones MESI
+    // ===== TEST DE ISA =====
+    printf("\n=== PE%d: Probando ISA ===\n", pe->id);
     
-    if (pe->id == 0) {
-        // PE0: Escribe addr=0 (MISS -> M)
-        printf("\n=== PE0: Escribir addr=0 (estado I->M) ===\n");
-        cache_write(pe->cache, 0, 100.0, pe->id);
-        sleep(1);
+    // Crear programa de prueba simple
+    // Programa: Suma dos números de memoria y guarda resultado
+    // addr[0] = 5.0
+    // addr[1] = 3.0
+    // R0 = memoria[0]
+    // R1 = memoria[1]
+    // R2 = R0 + R1
+    // memoria[2] = R2
+    // R3 = R2 * R0
+    // memoria[3] = R3
+    // HALT
+    
+    Instruction program[] = {
+        {OP_LOAD,  0, 0, 0, pe->id * 10 + 0, 0},      // [0] LOAD R0, [pe->id*10+0]
+        {OP_LOAD,  1, 0, 0, pe->id * 10 + 1, 0},      // [1] LOAD R1, [pe->id*10+1]
+        {OP_FADD,  2, 0, 1, 0, 0},                     // [2] FADD R2, R0, R1
+        {OP_STORE, 2, 0, 0, pe->id * 10 + 2, 0},      // [3] STORE R2, [pe->id*10+2]
+        {OP_FMUL,  3, 2, 0, 0, 0},                     // [4] FMUL R3, R2, R0
+        {OP_STORE, 3, 0, 0, pe->id * 10 + 3, 0},      // [5] STORE R3, [pe->id*10+3]
+        {OP_INC,   0, 0, 0, 0, 0},                     // [6] INC R0
+        {OP_DEC,   1, 0, 0, 0, 0},                     // [7] DEC R1
+        {OP_HALT,  0, 0, 0, 0, 0}                      // [8] HALT
+    };
+    
+    size_t program_size = sizeof(program) / sizeof(Instruction);
+    
+    // Inicializar memoria con valores de prueba
+    double val1 = 5.0 + pe->id;
+    double val2 = 3.0 + pe->id * 0.5;
+    
+    printf("[PE%d] Inicializando memoria: addr[%d]=%.2f, addr[%d]=%.2f\n", 
+           pe->id, pe->id * 10 + 0, val1, pe->id * 10 + 1, val2);
+    
+    cache_write(pe->cache, pe->id * 10 + 0, val1, pe->id);
+    cache_write(pe->cache, pe->id * 10 + 1, val2, pe->id);
+    
+    sleep(pe->id);  // Escalonar ejecución para ver mejor
+    
+    printf("\n[PE%d] ========== INICIANDO EJECUCIÓN ==========\n", pe->id);
+    
+    // Ejecutar programa
+    pe->rf.pc = 0;
+    int running = 1;
+    int max_iterations = 100;  // Prevenir loops infinitos
+    int iterations = 0;
+    
+    while (running && iterations < max_iterations) {
+        if (pe->rf.pc >= program_size) {
+            printf("[PE%d] ERROR: PC fuera de rango (%lu >= %zu)\n", pe->id, pe->rf.pc, program_size);
+            break;
+        }
         
-        // PE0: Lee addr=0 (HIT en M)
-        printf("\n=== PE0: Leer addr=0 (HIT en M) ===\n");
-        double val = cache_read(pe->cache, 0, pe->id);
-        printf("[PE0] Valor leído: %.2f\n", val);
-        sleep(1);
-
-        // PE0: Escribe de nuevo addr=0 (HIT en S)
-        printf("\n=== PE0: Escribir addr=0 nuevamente (HIT en S) ===\n");
-        cache_write(pe->cache, 0, 200.0, pe->id);
-        sleep(2);
-        
-        // PE0: Lee addr=100 que PE1 escribió (estado M->S en PE1, E en PE0)
-        printf("\n=== PE0: Leer addr=100 (que PE1 modificó) ===\n");
-        val = cache_read(pe->cache, 100, pe->id);
-        printf("[PE0] Valor leído de PE1: %.2f\n", val);
+        running = execute_instruction(&program[pe->rf.pc], &pe->rf, pe->cache, pe->id);
+        iterations++;
     }
-    else if (pe->id == 1) {
-        sleep(2);
-        
-        // PE1: Lee addr=0 que PE0 modificó (M->S en PE0, S en PE1)
-        printf("\n=== PE1: Leer addr=0 (que PE0 modificó, M->S) ===\n");
-        double val = cache_read(pe->cache, 0, pe->id);
-        printf("[PE1] Valor leído de PE0: %.2f\n", val);
-        sleep(1);
-        
-        // PE1: Escribe addr=100 (MISS -> M)
-        printf("\n=== PE1: Escribir addr=100 (estado I->M) ===\n");
-        cache_write(pe->cache, 100, 500.0, pe->id);
-        sleep(1);
-        
-        // PE1: Lee addr=0 otra vez (estado I->S)
-        printf("\n=== PE1: Leer addr=0 otra vez (estado I->S) ===\n");
-        val = cache_read(pe->cache, 0, pe->id);
-        printf("[PE1] Valor leído: %.2f\n", val);
+    
+    if (iterations >= max_iterations) {
+        printf("[PE%d] ERROR: Máximo de iteraciones alcanzado\n", pe->id);
     }
-    else if (pe->id == 2) {
-        sleep(4);
-        
-        // PE2: Lee addr=0 (que PE0 y PE1 tienen en S) -> todos en S
-        printf("\n=== PE2: Leer addr=0 (compartido con PE0 y PE1) ===\n");
-        double val = cache_read(pe->cache, 0, pe->id);
-        printf("[PE2] Valor leído (compartido): %.2f\n", val);
-        sleep(1);
-        
-        // PE2: Escribe addr=0 (S->M, invalida PE0 y PE1 con BUS_UPGR)
-        printf("\n=== PE2: Escribir addr=0 (S->M, BUS_UPGR invalida otros) ===\n");
-        cache_write(pe->cache, 0, 999.0, pe->id);
-    }
-    else if (pe->id == 3) {
-        sleep(1);
-        
-        // PE3: Lee addr=200 (nuevo, E)
-        printf("\n=== PE3: Leer addr=200 (primera lectura, I->E) ===\n");
-        double val = cache_read(pe->cache, 200, pe->id);
-        printf("[PE3] Valor leído: %.2f\n", val);
-        sleep(1);
-        
-        // PE3: Escribe addr=200 (E->M, sin broadcast)
-        printf("\n=== PE3: Escribir addr=200 (E->M, sin broadcast) ===\n");
-        cache_write(pe->cache, 200, 777.0, pe->id);
-    }
+    
+    printf("\n[PE%d] ========== EJECUCIÓN TERMINADA ==========\n", pe->id);
+    
+    // Imprimir estado final
+    reg_print(&pe->rf, pe->id);
     
     sleep(1);
     printf("[PE%d] Finished.\n", pe->id);
