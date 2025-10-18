@@ -19,9 +19,9 @@ void* pe_run(void* arg) {
         double val = cache_read(pe->cache, 0, pe->id);
         printf("[PE0] Valor leído: %.2f\n", val);
         sleep(1);
-        
-        // PE0: Escribe de nuevo addr=0 (HIT en M)
-        printf("\n=== PE0: Escribir addr=0 nuevamente (HIT en M) ===\n");
+
+        // PE0: Escribe de nuevo addr=0 (HIT en S)
+        printf("\n=== PE0: Escribir addr=0 nuevamente (HIT en S) ===\n");
         cache_write(pe->cache, 0, 200.0, pe->id);
         sleep(2);
         
@@ -44,8 +44,8 @@ void* pe_run(void* arg) {
         cache_write(pe->cache, 100, 500.0, pe->id);
         sleep(1);
         
-        // PE1: Lee addr=0 otra vez (HIT en S)
-        printf("\n=== PE1: Leer addr=0 otra vez (HIT en S) ===\n");
+        // PE1: Lee addr=0 otra vez (estado I->S)
+        printf("\n=== PE1: Leer addr=0 otra vez (estado I->S) ===\n");
         val = cache_read(pe->cache, 0, pe->id);
         printf("[PE1] Valor leído: %.2f\n", val);
     }
