@@ -1,112 +1,185 @@
-# MESI-MultiProcessor-Model
+# Proyecto 01 — Simulador de Sistema Multiprocesador con Coherencia MESI  
+**Curso:** CE-4302 Arquitectura de Computadores II  
+**Instituto Tecnológico de Costa Rica – Semestre II, 2025**  
 
-**Academic simulation of a multiprocessor system with MESI cache coherence**  
-Teaching-oriented model: 4 Processing Elements (PEs) with private 2-way caches, shared memory, and an interconnect implementing the MESI protocol. Includes examples to run parallel dot product benchmarks and collect metrics.
+**Profesores:**  
+- Luis Alonso Barboza Artavia  
+- Ronald García Fernández  
 
----
-
-## Project Status
-**Progress:** Week 1 — Planning and definition (documents and initial structure).  
-**Current objective:** Deliver Milestone 1 with specific objectives, roles, requirements extraction, and bibliography.
-
----
-
-## Short Description
-Academic simulation of a multiprocessor system with MESI coherence (4 PEs, 2-way caches, write-back / write-allocate).
+**Fechas de entrega:**  
+- Grupo 1: 22 de octubre de 2025  
+- Grupo 2: 21 de octubre de 2025  
 
 ---
 
-## Key Features
-- 4 PEs, each with 8 64-bit registers.  
-- Private cache per PE: 2-way set associative, 16 blocks × 32 bytes, write-allocate + write-back.  
-- MESI Protocol: states and messages (BusRd, BusRdX, BusUpgr, Writeback...).  
-- Simulated main memory: 512 64-bit positions.  
-- Hardware-like model: components modeled with threads.  
-- Metrics collection per PE: cache misses, invalidations, bus traffic, MESI transitions, R/W accesses.  
-- Benchmark: parallel dot product and automatic validation.
+## 1. Objetivo general
+
+Diseñar, modelar e implementar un sistema multiprocesador (MP) con coherencia de caché mediante el protocolo MESI, capaz de realizar el cálculo paralelo del producto punto de dos vectores de punto flotante de doble precisión.
 
 ---
 
-## Requirements 
-- **Recommended language:** C++ (recommended) or SystemVerilog (non-synthesizable).  
-- **Suggested tools (C++):** CMake, g++/clang++.  
-- **Operating system:** Linux / macOS / Windows (with development environment).  
-> Note: Python is **not** allowed.
+## 2. Descripción general del sistema
+
+El modelo simula un sistema multiprocesador (MP) de 4 Processing Elements (PEs), donde cada PE ejecuta un hilo de hardware y posee su propia caché privada.  
+Los PEs comparten una memoria principal común y se comunican a través de un bus de interconexión que implementa la coherencia MESI.
+
+### Estructura general
+- 4 PEs (`PE0`–`PE3`)
+- 4 cachés privadas (una por PE)
+- 1 memoria principal compartida
+- 1 bus de interconexión (arbitraje, broadcast, coherencia)
 
 ---
 
-## Structure
-```
-/docs/                 # Documentation (milestone1.pdf, meeting notes, bibliography)
-/diagrams/             # Diagrams (architecture.png)
-/src/                  # Source code (simulator, modules, utilities)
-/src/examples/         # ASM examples/benchmarks (dot product by segment)
-/tests/                # Test scripts and validation
-/scripts/              # Build / run / analysis scripts
-/README.md
-/LICENSE
-```
+## 3. Especificaciones técnicas
+
+| Componente | Características principales |
+|-------------|-----------------------------|
+| **Lenguaje permitido** | C / C++ / SystemVerilog (no sintetizable). Python no permitido. |
+| **PEs** | 4 PEs, cada uno con 8 registros de 64 bits (`REG0–REG7`). |
+| **Caché** | Privada por PE, 2-way set associative, 16 bloques de 32 bytes. <br>Políticas: *write-allocate* y *write-back*. |
+| **Memoria principal** | 512 posiciones de 64 bits. |
+| **Interconect (Bus)** | Responsable de arbitraje, comunicación y coherencia (MESI). |
+| **Threading** | Cada PE, el bus y la memoria deben modelarse con *threads* para simular hardware concurrente. |
 
 ---
 
-## How to compile / run 
-> Adjusts throughout the project.
+## 4. Instrucciones soportadas (ISA)
 
-### Example (C++ with CMake)
-```bash
-# clone repo
-git clone https://github.com/03-Kevin/MESI-MultiProcessor-Model.git
-cd MESI-MultiProcessor-Model
+Cada PE debe soportar las siguientes instrucciones de punto flotante (64 bits):
 
-# compile
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
-
-# run (placeholder)
-./mp_mesi_simulator --load ../src/examples/pdot_seg.asm --mem-config ../config/mem.cfg
-```
-
-### Example (SystemVerilog - ModelSim/Questa)
-```bash
-vlog src/*.sv
-vsim top_tb
-```
+| Instrucción | Descripción | Ejemplo |
+|--------------|-------------|----------|
+| `LOAD REG, [dir]` | Carga desde memoria a registro | `LOAD R5, [R0]` |
+| `STORE REG, [dir]` | Escribe de registro a memoria | `STORE R4, [R2]` |
+| `FMUL Rd, Ra, Rb` | Multiplicación flotante | `FMUL R7, R5, R6` |
+| `FADD Rd, Ra, Rb` | Suma flotante | `FADD R4, R4, R7` |
+| `INC REG` | Incrementa el registro | `INC R0` |
+| `DEC REG` | Decrementa el registro | `DEC R3` |
+| `JNZ label` | Salta si el registro ≠ 0 | `JNZ LOOP` |
 
 ---
 
-## Key files to include in Milestone 1 delivery
-- `docs/milestone1.pdf` — planning, objectives, roles, extracted technical requirements.  
-- `diagrams/architecture.png` — high-level diagram (PEs, caches, interconnect, memory).  
-- `docs/cache_mesi.md` — cache specification and MESI transition table.  
-- `src/examples/pdot_seg.asm` — ASM example for a dot product segment.   
-- `README.md` — Project instructions.  
+## 5. Problema a resolver: producto punto paralelo
+
+Dado dos vectores `A[]` y `B[]` de tamaño `N` (tipo `double`):
+
+- Cada PE procesa un segmento de tamaño `N/4`.
+- Se almacenan los resultados parciales en un arreglo auxiliar.
+- Un PE final realiza la suma final de los productos parciales.
+
+### Ejemplo de paralelismo
+
+A = [a0, a1, ..., aN]
+B = [b0, b1, ..., bN]
+
+PE0 → segmento A0..A(N/4)
+PE1 → segmento A(N/4)..A(N/2)
+PE2 → segmento A(N/2)..A(3N/4)
+PE3 → segmento A(3N/4)..A(N)
+
+
+Cada PE calcula su producto parcial, y uno de ellos combina los resultados.
 
 ---
 
-## Checklist Milestone1 (paste in delivery ZIP)
-- [ ] `milestone1.pdf` (cover, objectives, requirements, roles, plan, bibliography).  
-- [ ] `diagrams/architecture.png`.  
-- [ ] `docs/cache_mesi.md`.  
-- [ ] `src/examples/pdot_seg.asm`.
-- [ ] `README.md` updated.  
-- [ ] First commit: `init: project structure - milestone1` and tag `milestone1`.  
-- [ ] ZIP with everything and upload to Tec Digital before deadline.
+## 6. Protocolo MESI implementado
+
+Cada caché implementa coherencia de caché con los siguientes estados:
+
+- **M:** Modified (dato sucio, solo aquí)
+- **E:** Exclusive (dato limpio, solo aquí)
+- **S:** Shared (dato limpio, compartido)
+- **I:** Invalid (no válido)
+
+### Señales del bus
+| Señal | Descripción | Acción principal |
+|--------|--------------|------------------|
+| `BusRd` | Solicitud de lectura | Obtiene bloque de otra caché o memoria |
+| `BusRdX` | Lectura exclusiva (para escribir) | Invalida copias en otras cachés |
+| `BusUpgr` | Upgrade de S→M | Invalida copias compartidas |
+| `BusWB` | Write-back | Escribe línea modificada a memoria |
 
 ---
 
-## Development Conventions
-- Main branch: `main` (always stable).  
-- Working branches: `feature/<name>` (one task per branch).  
-- Clear commit messages: `feat:`, `fix:`, `docs:`, `chore:`.  
-- Open PRs for merges and use reviewers among team members.
+## 7. Requisitos funcionales
+
+1. Modelar cada componente (PE, bus, caché, memoria) como *thread independiente*.  
+2. Implementar un cargador de código para las instrucciones de cada PE.  
+3. Implementar carga de memoria de datos con control de alineamiento.  
+4. Implementar segmentación de memoria (para dividir los vectores).  
+5. Implementar el protocolo MESI completo en el bus.  
+6. Implementar comunicación *shared-memory* para combinar resultados.  
+7. Registrar estadísticas por PE:  
+   - Cantidad de *cache misses*  
+   - Cantidad de *invalidaciones relevantes*  
+   - Cantidad de *operaciones de lectura/escritura*  
+   - *Tráfico por PE*  
+   - Transiciones de estado MESI  
+8. Registrar todos los accesos a memoria principal.  
+9. Permitir visualización de:  
+   - Estados de líneas de caché  
+   - Contenido de memoria  
+   - Estadísticas del bus  
+   - Ejecución paso a paso o por bloque  
+10. Validar que el producto punto final sea correcto.  
+11. Mostrar métricas y resultados para análisis.  
 
 ---
 
-## How to contribute
-1. Fork → Clone → Create branch: `feature/<name>`.  
-2. Make atomic and descriptive commits.  
-3. Open PR towards `main` with description and tests performed.  
-4. Assign reviewer and approve before merge.
+## 8. Requisitos de entrega
+
+### Archivos requeridos
+- Código fuente completo del simulador.  
+- Archivo `README.md` (este documento).  
+- Documentación técnica y de diseño.  
+- Archivos o scripts para compilar (`makefile`).  
+- Diagramas de arquitectura y flujo.  
+- Reporte técnico en formato PDF.  
+- Video de presentación (4:30–5:30 min).  
+
+**No se aceptan binarios ejecutables como entrega.**
+
+---
+
+## 9. Entregables parciales (avances semanales)
+
+| Semana | Entrega | Contenido esperado |
+|---------|----------|--------------------|
+| 1 | **Planificación y definición** | Revisión del documento, roles del equipo, objetivos, requisitos extraídos. |
+| 2 | **Diseño de arquitectura** | Diagramas de bloques, estructura general, diseño del bus, caché y memoria. |
+| 3 | **Implementación base** | Módulos de memoria, caché y bus con manejo inicial de coherencia. |
+| 4 | **Integración y pruebas** | Validación parcial, corrección de errores, preparación de la entrega final. |
+
+---
+
+## 10. Evaluación del proyecto
+
+| Criterio | Peso | Descripción |
+|-----------|------|-------------|
+| Avances semanales | 20% | Cumplimiento de entregas parciales y progreso ordenado. |
+| Presentación funcional | 40% | Demostración del sistema y defensa oral. |
+| Artículo científico | 20% | Documento técnico con resultados y análisis. |
+| Presentación final (video) | 20% | Presentación en formato claro, dirigida a público general. |
+| **Extra (opcional)** | +10% | Artículo y video completamente en inglés. |
+
+---
+
+## 11. Consideraciones adicionales
+
+- El código debe compilar y ejecutarse correctamente desde el `makefile`.  
+- Se recomienda una interfaz gráfica simple si se desea.  
+- La entrega debe realizarse en **Tec Digital → Evaluaciones** antes de las 11:59 p.m.  
+- Todos los miembros del grupo deben participar en la defensa.  
+- Los hilos deben sincronizarse correctamente mediante *mutex* o *semaphores*.  
+
+---
+
+## 12. Referencias
+
+1. Hennessy, J. L., & Patterson, D. A. *Computer Architecture: A Quantitative Approach.* Elsevier, 2017.  
+2. Wikipedia: [Producto escalar](https://es.wikipedia.org/wiki/Producto_escalar)  
+3. Greaves, D. J. *Modern System-on-Chip Design on Arm.* Arm Education Media.  
+4. Canal de YouTube: [keeroyz](https://www.youtube.com/user/keeroyz)
 
 ---
