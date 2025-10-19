@@ -6,4 +6,8 @@ INC R0           # R0 = 1
 INC R0           # R0 = 2  
 INC R0           # R0 = 3
 STORE R0 100     # Guardar resultado (3)
+LOOP:
+    DEC R0
+    INC R1
+    JNZ R0 LOOP
 HALT             # Terminar

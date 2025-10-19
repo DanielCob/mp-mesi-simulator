@@ -17,10 +17,10 @@ void* pe_run(void* arg) {
     // Por defecto, todos los PEs ejecutan el mismo programa
     // Puedes cambiar esto para que cada PE ejecute un programa diferente
     const char* program_files[] = {
-        "test_suma.asm",      // PE0
-        "test_producto.asm",  // PE1
-        "test_loop.asm",      // PE2
-        "test_jnz.asm"        // PE3
+        "asm/test_suma.asm",      // PE0
+        "asm/test_producto.asm",  // PE1
+        "asm/test_loop.asm",      // PE2
+        "asm/test_jnz.asm"        // PE3
     };
     
     const char* filename = program_files[pe->id];
