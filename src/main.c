@@ -4,7 +4,11 @@
 #include "memory/memory.h"
 
 int main() {
-    mem_init();
+    // Inicializar memoria y crear su thread
+    Memory mem;
+    mem_init(&mem);
+    pthread_t mem_thread;
+    pthread_create(&mem_thread, NULL, mem_thread_func, &mem);
 
     Bus bus;
     Cache caches[NUM_PES];
@@ -18,11 +22,11 @@ int main() {
         caches[i].bus = &bus;
     }
 
-    // Inicializar bus
+    // Inicializar bus con referencia a memoria
     Cache* cache_ptrs[NUM_PES];
     for (int i = 0; i < NUM_PES; i++)
         cache_ptrs[i] = &caches[i];
-    bus_init(&bus, cache_ptrs);
+    bus_init(&bus, cache_ptrs, &mem);
 
     // Crear thread del bus
     pthread_create(&bus_thread, NULL, bus_thread_func, &bus);
@@ -43,12 +47,14 @@ int main() {
     bus_destroy(&bus);
     pthread_join(bus_thread, NULL);
 
+    // Terminar memoria y esperar su thread
+    mem_destroy(&mem);
+    pthread_join(mem_thread, NULL);
+
     // Limpiar recursos
     for (int i = 0; i < NUM_PES; i++) {
         cache_destroy(&caches[i]);
     }
-    
-    mem_destroy();
 
     return 0;
 }

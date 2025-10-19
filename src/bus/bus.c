@@ -3,9 +3,11 @@
 #include <stdio.h>
 #include <pthread.h>
 
-void bus_init(Bus* bus, Cache* caches[]) {
+void bus_init(Bus* bus, Cache* caches[], Memory* memory) {
     for (int i = 0; i < NUM_PES; i++)
         bus->caches[i] = caches[i];
+    
+    bus->memory = memory;  // Guardar referencia a la memoria
 
     // Inicializar mutex y variables de condición
     pthread_mutex_init(&bus->mutex, NULL);
@@ -84,7 +86,7 @@ void* bus_thread_func(void* arg) {
         if (bus->handlers[req->msg]) {
             bus->handlers[req->msg](bus, req->addr, req->src_pe);
         } else {
-            printf("[BUS] ⚠️ No hay handler definido para la señal %d\n", req->msg);
+            printf("[BUS] No hay handler definido para la señal %d\n", req->msg);
         }
         
         pthread_mutex_lock(&bus->mutex);

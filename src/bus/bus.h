@@ -27,6 +27,7 @@ typedef struct {
 // Estructura principal del bus
 typedef struct Bus {
     Cache* caches[NUM_PES];
+    Memory* memory;              // Referencia a la memoria
     BusHandler handlers[4];  // Dispatch table
     pthread_mutex_t mutex;   // Protección del bus
     pthread_cond_t request_ready;  // Señal de nueva solicitud
@@ -36,7 +37,7 @@ typedef struct Bus {
 } Bus;
 
 // Funciones públicas
-void bus_init(Bus* bus, Cache* caches[]);
+void bus_init(Bus* bus, Cache* caches[], Memory* memory);
 void bus_destroy(Bus* bus);
 void bus_broadcast(Bus* bus, BusMsg msg, int addr, int src_pe);
 void* bus_thread_func(void* arg);  // Función del thread del bus

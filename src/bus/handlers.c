@@ -12,6 +12,8 @@ void bus_register_handlers(Bus* bus) {
 
 void handle_busrd(Bus* bus, int addr, int src_pe) {
     // BUS_RD: Otro procesador quiere leer la línea
+    // THREAD-SAFETY: Este handler es llamado por el bus thread (serializado)
+    // Las funciones cache_get/set_* ya tienen mutex interno
     double shared_data = 0.0;
     int data_found = 0;
     Cache* requestor = bus->caches[src_pe];
@@ -19,6 +21,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
     for (int i = 0; i < NUM_PES; i++) {
         if (i != src_pe) {
             Cache* cache = bus->caches[i];
+            // cache_get_state tiene mutex interno
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == M) {
@@ -26,7 +29,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
                 shared_data = cache_get_data(cache, addr);
                 printf("  [Cache PE%d] Tiene dato en M (%.2f), haciendo WRITEBACK y pasando a S\n", 
                        i, shared_data);
-                mem_write(addr, shared_data);
+                mem_write(bus->memory, addr, shared_data);  // ← Usa bus->memory
                 cache_set_state(cache, addr, S);
                 data_found = 1;
                 break;  // El dato en M es el más actualizado
@@ -50,7 +53,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
     // Si ningún cache tiene el dato, leer de memoria
     if (!data_found) {
         printf("[Bus] Read miss, leyendo de memoria principal addr=%d\n", addr);
-        shared_data = mem_read(addr);
+        shared_data = mem_read(bus->memory, addr);  // ← Usa bus->memory
         printf("  [Memoria] Devolviendo valor %.2f\n", shared_data);
         // El primer lector obtiene estado E
         cache_set_data(requestor, addr, shared_data);
@@ -65,6 +68,8 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
 
 void handle_busrdx(Bus* bus, int addr, int src_pe) {
     // BUS_RDX: Otro procesador quiere escribir la línea
+    // THREAD-SAFETY: Handler serializado por el bus thread
+    // Cada acceso a cache ya está protegido por mutex interno
     double exclusive_data = 0.0;
     int data_found = 0;
     Cache* requestor = bus->caches[src_pe];
@@ -79,7 +84,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
                 exclusive_data = cache_get_data(cache, addr);
                 printf("  [Cache PE%d] Tiene dato en M (%.2f), haciendo WRITEBACK e invalidando\n", 
                        i, exclusive_data);
-                mem_write(addr, exclusive_data);
+                mem_write(bus->memory, addr, exclusive_data);  // ← Usa bus->memory
                 cache_set_state(cache, addr, I);
                 data_found = 1;
                 break;  // El dato en M es el más actualizado
@@ -109,7 +114,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
     // Si no encontramos el dato en otro cache, leer de memoria
     if (!data_found) {
         printf("[Bus] RDX miss, leyendo de memoria principal addr=%d\n", addr);
-        exclusive_data = mem_read(addr);
+        exclusive_data = mem_read(bus->memory, addr);  // ← Usa bus->memory
         printf("  [Memoria] Devolviendo valor %.2f\n", exclusive_data);
     }
 
@@ -121,6 +126,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
 
 void handle_busupgr(Bus* bus, int addr, int src_pe) {
     // BUS_UPGR: Un procesador quiere actualizar de S a M
+    // THREAD-SAFETY: Serializado por el bus thread
     Cache* requestor = bus->caches[src_pe];
     
     for (int i = 0; i < NUM_PES; i++) {
@@ -141,12 +147,13 @@ void handle_busupgr(Bus* bus, int addr, int src_pe) {
 
 void handle_buswb(Bus* bus, int addr, int src_pe) {
     // BUS_WB: Un procesador está escribiendo de vuelta a memoria
+    // THREAD-SAFETY: Serializado por el bus thread
     Cache* writer = bus->caches[src_pe];
     
     if (cache_get_state(writer, addr) == M) {
         double data = cache_get_data(writer, addr);
         printf("[Bus] Writeback a memoria principal addr=%d valor=%.2f\n", addr, data);
-        mem_write(addr, data);
+        mem_write(bus->memory, addr, data);  // ← Usa bus->memory
     }
     
     cache_set_state(writer, addr, I);
