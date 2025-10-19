@@ -27,17 +27,11 @@ void mem_destroy(Memory* mem) {
     pthread_cond_destroy(&mem->current_request.done);
 }
 
-double mem_read(Memory* mem, int addr) {
+void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE]) {
     // Verificar alineamiento
     if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[MEMORY ERROR] Read address %d is not aligned to %d-byte boundary\n", 
-                addr, MEM_ALIGNMENT);
-        fprintf(stderr, "               Aligned address would be: %d (down) or %d (up)\n",
-                ALIGN_DOWN(addr), ALIGN_UP(addr));
-        // En producción, podrías abortar aquí
-        // Por ahora, alineamos automáticamente hacia abajo
+        fprintf(stderr, "[MEMORY ERROR] Read block address %d is not aligned\n", addr);
         addr = ALIGN_DOWN(addr);
-        fprintf(stderr, "               Using aligned address: %d\n", addr);
     }
     
     pthread_mutex_lock(&mem->mutex);
@@ -47,8 +41,8 @@ double mem_read(Memory* mem, int addr) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Preparar solicitud de lectura
-    mem->current_request.op = MEM_OP_READ;
+    // Preparar solicitud de lectura de bloque
+    mem->current_request.op = MEM_OP_READ_BLOCK;
     mem->current_request.addr = addr;
     mem->current_request.processed = false;
     mem->has_request = true;
@@ -61,24 +55,19 @@ double mem_read(Memory* mem, int addr) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Obtener resultado
-    double result = mem->current_request.result;
+    // Copiar resultado
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+        block[i] = mem->current_request.block[i];
+    }
     
     pthread_mutex_unlock(&mem->mutex);
-    return result;
 }
 
-void mem_write(Memory* mem, int addr, double value) {
+void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE]) {
     // Verificar alineamiento
     if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[MEMORY ERROR] Write address %d is not aligned to %d-byte boundary\n", 
-                addr, MEM_ALIGNMENT);
-        fprintf(stderr, "               Aligned address would be: %d (down) or %d (up)\n",
-                ALIGN_DOWN(addr), ALIGN_UP(addr));
-        // En producción, podrías abortar aquí
-        // Por ahora, alineamos automáticamente hacia abajo
+        fprintf(stderr, "[MEMORY ERROR] Write block address %d is not aligned\n", addr);
         addr = ALIGN_DOWN(addr);
-        fprintf(stderr, "               Using aligned address: %d\n", addr);
     }
     
     pthread_mutex_lock(&mem->mutex);
@@ -88,10 +77,12 @@ void mem_write(Memory* mem, int addr, double value) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Preparar solicitud de escritura
-    mem->current_request.op = MEM_OP_WRITE;
+    // Preparar solicitud de escritura de bloque
+    mem->current_request.op = MEM_OP_WRITE_BLOCK;
     mem->current_request.addr = addr;
-    mem->current_request.value = value;
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+        mem->current_request.block[i] = block[i];
+    }
     mem->current_request.processed = false;
     mem->has_request = true;
     
@@ -129,12 +120,16 @@ void* mem_thread_func(void* arg) {
         pthread_mutex_unlock(&mem->mutex);
         
         // Ejecutar operación (fuera del lock)
-        if (req->op == MEM_OP_READ) {
-            printf("[MEMORY] READ addr=%d\n", req->addr);
-            req->result = mem->data[req->addr];
-        } else if (req->op == MEM_OP_WRITE) {
-            printf("[MEMORY] WRITE addr=%d, value=%.2f\n", req->addr, req->value);
-            mem->data[req->addr] = req->value;
+        if (req->op == MEM_OP_READ_BLOCK) {
+            printf("[MEMORY] READ_BLOCK addr=%d (reading %d doubles)\n", req->addr, BLOCK_SIZE);
+            for (int i = 0; i < BLOCK_SIZE; i++) {
+                req->block[i] = mem->data[req->addr + i];
+            }
+        } else if (req->op == MEM_OP_WRITE_BLOCK) {
+            printf("[MEMORY] WRITE_BLOCK addr=%d (writing %d doubles)\n", req->addr, BLOCK_SIZE);
+            for (int i = 0; i < BLOCK_SIZE; i++) {
+                mem->data[req->addr + i] = req->block[i];
+            }
         }
         
         pthread_mutex_lock(&mem->mutex);

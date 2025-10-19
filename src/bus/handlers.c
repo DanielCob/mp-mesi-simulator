@@ -14,7 +14,6 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
     // BUS_RD: Otro procesador quiere leer la línea
     // THREAD-SAFETY: Este handler es llamado por el bus thread (serializado)
     // Las funciones cache_get/set_* ya tienen mutex interno
-    double shared_data = 0.0;
     int data_found = 0;
     Cache* requestor = bus->caches[src_pe];
     
@@ -25,103 +24,94 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == M) {
-                // Proveer dato y escribir a memoria
-                shared_data = cache_get_data(cache, addr);
-                printf("  [Cache PE%d] Tiene dato en M (%.2f), haciendo WRITEBACK y pasando a S\n", 
-                       i, shared_data);
-                mem_write(bus->memory, addr, shared_data);  // ← Usa bus->memory
+                // Proveer bloque completo y escribir a memoria
+                double block[BLOCK_SIZE];
+                cache_get_block(cache, addr, block);
+                printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK y pasando a S\n", i);
+                mem_write_block(bus->memory, addr, block);  // ← Escribe bloque completo
+                // Proveer el bloque al solicitante
+                cache_set_block(requestor, addr, block);
                 cache_set_state(cache, addr, S);
+                cache_set_state(requestor, addr, S);
                 data_found = 1;
-                break;  // El dato en M es el más actualizado
+                return;  // Ya completamos la operación
             } else if (state == E) {
-                // Proveer dato, no necesita writeback
-                shared_data = cache_get_data(cache, addr);
-                printf("  [Cache PE%d] Tiene dato en E (%.2f), pasando a S\n", i, shared_data);
+                // Proveer bloque, no necesita writeback
+                double block[BLOCK_SIZE];
+                cache_get_block(cache, addr, block);
+                printf("  [Cache PE%d] Tiene bloque en E, pasando a S\n", i);
+                cache_set_block(requestor, addr, block);
                 cache_set_state(cache, addr, S);
+                cache_set_state(requestor, addr, S);
                 data_found = 1;
-                break;  // El dato en E es válido
+                return;  // Ya completamos la operación
             } else if (state == S && !data_found) {
-                // Tomar el dato de cualquier cache que lo tenga en S
-                shared_data = cache_get_data(cache, addr);
-                printf("  [Cache PE%d] Tiene dato en S (%.2f), compartiendo\n", i, shared_data);
+                // Tomar el bloque de cualquier cache que lo tenga en S
+                double block[BLOCK_SIZE];
+                cache_get_block(cache, addr, block);
+                printf("  [Cache PE%d] Tiene bloque en S, compartiendo\n", i);
+                cache_set_block(requestor, addr, block);
+                cache_set_state(requestor, addr, S);
                 data_found = 1;
-                break;  // Podemos salir, todas las otras copias válidas deben estar en S
+                return;  // Ya completamos la operación
             }
         }
     }
 
     // Si ningún cache tiene el dato, leer de memoria
     if (!data_found) {
-        printf("[Bus] Read miss, leyendo de memoria principal addr=%d\n", addr);
-        shared_data = mem_read(bus->memory, addr);  // ← Usa bus->memory
-        printf("  [Memoria] Devolviendo valor %.2f\n", shared_data);
+        printf("[Bus] Read miss, leyendo BLOQUE desde memoria addr=%d\n", addr);
+        double block[BLOCK_SIZE];
+        mem_read_block(bus->memory, addr, block);  // ← Lee bloque completo
+        printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
+               block[0], block[1], block[2], block[3]);
         // El primer lector obtiene estado E
-        cache_set_data(requestor, addr, shared_data);
+        cache_set_block(requestor, addr, block);  // ← Establece bloque completo
         cache_set_state(requestor, addr, E);
-    } else {
-        // Si obtuvimos el dato de otro cache, estado S
-        printf("  [Bus] Suministrando valor %.2f al PE%d (estado S)\n", shared_data, src_pe);
-        cache_set_data(requestor, addr, shared_data);
-        cache_set_state(requestor, addr, S);
     }
+    // Nota: Si data_found es true, ya hicimos return en el loop
 }
 
 void handle_busrdx(Bus* bus, int addr, int src_pe) {
-    // BUS_RDX: Otro procesador quiere escribir la línea
-    // THREAD-SAFETY: Handler serializado por el bus thread
-    // Cada acceso a cache ya está protegido por mutex interno
-    double exclusive_data = 0.0;
+    // BUS_RDX: Otro procesador quiere escribir (pide permisos exclusivos)
+    // THREAD-SAFETY: Este handler es llamado por el bus thread (serializado)
+    // Las funciones cache_get/set_* ya tienen mutex interno
     int data_found = 0;
     Cache* requestor = bus->caches[src_pe];
     
     for (int i = 0; i < NUM_PES; i++) {
         if (i != src_pe) {
             Cache* cache = bus->caches[i];
+            // cache_get_state tiene mutex interno
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == M) {
-                // Proveer dato y escribir a memoria
-                exclusive_data = cache_get_data(cache, addr);
-                printf("  [Cache PE%d] Tiene dato en M (%.2f), haciendo WRITEBACK e invalidando\n", 
-                       i, exclusive_data);
-                mem_write(bus->memory, addr, exclusive_data);  // ← Usa bus->memory
+                // Proveer bloque completo y escribir a memoria
+                double block[BLOCK_SIZE];
+                cache_get_block(cache, addr, block);
+                printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK e INVALIDANDO\n", i);
+                mem_write_block(bus->memory, addr, block);  // ← Escribe bloque completo
+                // Proveer bloque al solicitante
+                cache_set_block(requestor, addr, block);
                 cache_set_state(cache, addr, I);
+                cache_set_state(requestor, addr, M);
                 data_found = 1;
-                break;  // El dato en M es el más actualizado
-            } else if (state == E) {
-                exclusive_data = cache_get_data(cache, addr);
-                printf("  [Cache PE%d] Tiene dato en E (%.2f), invalidando\n", i, exclusive_data);
-                cache_set_state(cache, addr, I);
-                data_found = 1;
-                break;  // El dato en E es válido
-            } else if (state == S) {
-                // Se debe invalidar todas las copias en S, y guardar el dato para el solicitante
-                if (!data_found)
-                {
-                    exclusive_data = cache_get_data(cache, addr);
-                    printf("  [Cache PE%d] Tiene dato en S (%.2f), invalidando\n", i, exclusive_data);
+                return;
+            } else if (state == E || state == S) {
+                if (!data_found) {
+                    // Proveer bloque solo si aún no se encontró
+                    double block[BLOCK_SIZE];
+                    cache_get_block(cache, addr, block);
+                    printf("  [Cache PE%d] Tiene bloque en %c, proveyendo e INVALIDANDO\n", i, state == E ? 'E' : 'S');
+                    cache_set_block(requestor, addr, block);
+                    cache_set_state(requestor, addr, M);
                     data_found = 1;
                 }
-                else {
-                    printf("  [Cache PE%d] Tiene dato en S, invalidando\n", i);
-                }
-                
+                // Invalidar en todos los casos (E o S)
                 cache_set_state(cache, addr, I);
             }
         }
     }
-
-    // Si no encontramos el dato en otro cache, leer de memoria
-    if (!data_found) {
-        printf("[Bus] RDX miss, leyendo de memoria principal addr=%d\n", addr);
-        exclusive_data = mem_read(bus->memory, addr);  // ← Usa bus->memory
-        printf("  [Memoria] Devolviendo valor %.2f\n", exclusive_data);
-    }
-
-    // Actualizar el cache del solicitante
-    printf("  [Bus] Suministrando valor %.2f al PE%d (estado M)\n", exclusive_data, src_pe);
-    cache_set_data(requestor, addr, exclusive_data);
-    cache_set_state(requestor, addr, M);
 }
 
 void handle_busupgr(Bus* bus, int addr, int src_pe) {
@@ -151,9 +141,11 @@ void handle_buswb(Bus* bus, int addr, int src_pe) {
     Cache* writer = bus->caches[src_pe];
     
     if (cache_get_state(writer, addr) == M) {
-        double data = cache_get_data(writer, addr);
-        printf("[Bus] Writeback a memoria principal addr=%d valor=%.2f\n", addr, data);
-        mem_write(bus->memory, addr, data);  // ← Usa bus->memory
+        double block[BLOCK_SIZE];
+        cache_get_block(writer, addr, block);  // ← Obtiene bloque completo
+        printf("[Bus] Writeback BLOQUE a memoria addr=%d [%.2f, %.2f, %.2f, %.2f]\n", 
+               addr, block[0], block[1], block[2], block[3]);
+        mem_write_block(bus->memory, addr, block);  // ← Escribe bloque completo
     }
     
     cache_set_state(writer, addr, I);

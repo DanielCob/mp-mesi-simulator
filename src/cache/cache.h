@@ -40,7 +40,9 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id);
 CacheLine* cache_get_line(Cache* cache, int addr);
 MESI_State cache_get_state(Cache* cache, int addr);
 void cache_set_state(Cache* cache, int addr, MESI_State new_state);
-double cache_get_data(Cache* cache, int addr);
-void cache_set_data(Cache* cache, int addr, double data);
+
+// Funciones de acceso a bloques completos (para handlers del bus)
+void cache_get_block(Cache* cache, int addr, double block[BLOCK_SIZE]);
+void cache_set_block(Cache* cache, int addr, const double block[BLOCK_SIZE]);
 
 #endif

@@ -21,19 +21,20 @@ void cache_destroy(Cache* cache) {
 }
 
 double cache_read(Cache* cache, int addr, int pe_id) {
-    // Verificar alineamiento
-    if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[CACHE ERROR PE%d] Read address %d is not aligned to %d-byte boundary\n", 
-                pe_id, addr, MEM_ALIGNMENT);
-        fprintf(stderr, "                   Must use aligned addresses. Using ALIGN_DOWN(%d) = %d\n",
-                addr, ALIGN_DOWN(addr));
-        addr = ALIGN_DOWN(addr);
+    // Extraer dirección base del bloque y offset
+    int block_base = GET_BLOCK_BASE(addr);
+    int offset = GET_BLOCK_OFFSET(addr);
+    
+    if (offset != 0) {
+        printf("[PE%d] READ addr=%d → block_base=%d, offset=%d\n", 
+               pe_id, addr, block_base, offset);
     }
     
     pthread_mutex_lock(&cache->mutex);
     
-    int set_index = addr % SETS;
-    unsigned long tag = addr / SETS;
+    // El cache trabaja con direcciones de bloque (base)
+    int set_index = block_base % SETS;
+    unsigned long tag = block_base / SETS;
     CacheSet* set = &cache->sets[set_index];
 
     // Buscar hit en el cache
@@ -43,9 +44,9 @@ double cache_read(Cache* cache, int addr, int pe_id) {
             
             // HIT: estados M, E o S pueden servir la lectura directamente
             if (state == M || state == E || state == S) {
-                printf("[PE%d] READ HIT en set %d (way %d, estado %c) -> valor=%.2f\n", 
-                       pe_id, set_index, i, "MESI"[state], set->lines[i].data[0]);
-                double result = set->lines[i].data[0];
+                double result = set->lines[i].data[offset];  // ← Usa el offset aquí
+                printf("[PE%d] READ HIT en set %d (way %d, estado %c, offset %d) -> valor=%.2f\n", 
+                       pe_id, set_index, i, "MESI"[state], offset, result);
                 pthread_mutex_unlock(&cache->mutex);
                 return result;
             }
@@ -73,33 +74,34 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     // para evitar deadlock (el bus necesitará lockear otras cachés)
     pthread_mutex_unlock(&cache->mutex);
     
-    // Enviar BUS_RD - el handler actualizará el estado y datos
-    bus_broadcast(cache->bus, BUS_RD, addr, pe_id);
+    // Enviar BUS_RD - el handler actualizará el estado y datos (trae bloque completo)
+    bus_broadcast(cache->bus, BUS_RD, block_base, pe_id);
     
     // Re-lockear para leer el resultado
     pthread_mutex_lock(&cache->mutex);
     
-    printf("[PE%d] READ completado -> valor=%.2f (estado %c)\n", 
-           pe_id, victim->data[0], "MESI"[victim->state]);
-    double result = victim->data[0];
+    double result = victim->data[offset];  // ← Usa el offset aquí
+    printf("[PE%d] READ completado -> bloque traído, offset %d, valor=%.2f (estado %c)\n", 
+           pe_id, offset, result, "MESI"[victim->state]);
     pthread_mutex_unlock(&cache->mutex);
     return result;
 }
 
 void cache_write(Cache* cache, int addr, double value, int pe_id) {
-    // Verificar alineamiento
-    if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[CACHE ERROR PE%d] Write address %d is not aligned to %d-byte boundary\n", 
-                pe_id, addr, MEM_ALIGNMENT);
-        fprintf(stderr, "                   Must use aligned addresses. Using ALIGN_DOWN(%d) = %d\n",
-                addr, ALIGN_DOWN(addr));
-        addr = ALIGN_DOWN(addr);
+    // Extraer dirección base del bloque y offset
+    int block_base = GET_BLOCK_BASE(addr);
+    int offset = GET_BLOCK_OFFSET(addr);
+    
+    if (offset != 0) {
+        printf("[PE%d] WRITE addr=%d → block_base=%d, offset=%d\n", 
+               pe_id, addr, block_base, offset);
     }
     
     pthread_mutex_lock(&cache->mutex);
     
-    int set_index = addr % SETS;
-    unsigned long tag = addr / SETS;
+    // El cache trabaja con direcciones de bloque (base)
+    int set_index = block_base % SETS;
+    unsigned long tag = block_base / SETS;
     CacheSet* set = &cache->sets[set_index];
 
     // Buscar si la línea ya está en el cache
@@ -109,33 +111,33 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
             
             if (state == M) {
                 // HIT en M: escribir directamente, ya tenemos permisos exclusivos
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado M) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, value);
-                set->lines[i].data[0] = value;
+                printf("[PE%d] WRITE HIT en set %d (way %d, estado M, offset %d) -> escribiendo %.2f\n", 
+                       pe_id, set_index, i, offset, value);
+                set->lines[i].data[offset] = value;  // ← Usa el offset aquí
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
             else if (state == E) {
                 // HIT en E: escribir y cambiar a M
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado E->M) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, value);
-                set->lines[i].data[0] = value;
+                printf("[PE%d] WRITE HIT en set %d (way %d, estado E->M, offset %d) -> escribiendo %.2f\n", 
+                       pe_id, set_index, i, offset, value);
+                set->lines[i].data[offset] = value;  // ← Usa el offset aquí
                 set->lines[i].state = M;
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
             else if (state == S) {
                 // HIT en S: necesitamos invalidar otras copias con BUS_UPGR
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado S->M, enviando BUS_UPGR) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, value);
+                printf("[PE%d] WRITE HIT en set %d (way %d, estado S->M, offset %d, enviando BUS_UPGR) -> escribiendo %.2f\n", 
+                       pe_id, set_index, i, offset, value);
                 
                 // Desbloquear antes de usar el bus
                 pthread_mutex_unlock(&cache->mutex);
-                bus_broadcast(cache->bus, BUS_UPGR, addr, pe_id);
+                bus_broadcast(cache->bus, BUS_UPGR, block_base, pe_id);
                 
                 // Re-lockear para actualizar
                 pthread_mutex_lock(&cache->mutex);
-                set->lines[i].data[0] = value;
+                set->lines[i].data[offset] = value;  // ← Usa el offset aquí
                 set->lines[i].state = M;
                 pthread_mutex_unlock(&cache->mutex);
                 return;
@@ -160,16 +162,17 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     // Desbloquear antes de usar el bus
     pthread_mutex_unlock(&cache->mutex);
     
-    // Enviar BUS_RDX - el handler invalidará otras copias y traerá el dato
-    bus_broadcast(cache->bus, BUS_RDX, addr, pe_id);
+    // Enviar BUS_RDX - el handler invalidará otras copias y traerá el bloque
+    bus_broadcast(cache->bus, BUS_RDX, block_base, pe_id);
 
     // Re-lockear para escribir
     pthread_mutex_lock(&cache->mutex);
     
-    // Escribir el nuevo valor y marcar como M
-    victim->data[0] = value;
+    // Escribir el nuevo valor en el offset correcto y marcar como M
+    victim->data[offset] = value;  // ← Usa el offset aquí
     victim->state = M;
-    printf("[PE%d] WRITE completado -> valor=%.2f (estado M)\n", pe_id, value);
+    printf("[PE%d] WRITE completado -> bloque traído, offset %d, valor=%.2f (estado M)\n", 
+           pe_id, offset, value);
     
     pthread_mutex_unlock(&cache->mutex);
 }
@@ -242,19 +245,30 @@ void cache_set_state(Cache* cache, int addr, MESI_State new_state) {
     pthread_mutex_unlock(&cache->mutex);
 }
 
-double cache_get_data(Cache* cache, int addr) {
-    pthread_mutex_lock(&cache->mutex);
-    CacheLine* line = cache_get_line(cache, addr);
-    double data = line ? line->data[0] : 0.0;
-    pthread_mutex_unlock(&cache->mutex);
-    return data;
-}
-
-void cache_set_data(Cache* cache, int addr, double data) {
+// Obtener bloque completo (4 doubles) - Para handlers del bus
+void cache_get_block(Cache* cache, int addr, double block[BLOCK_SIZE]) {
     pthread_mutex_lock(&cache->mutex);
     CacheLine* line = cache_get_line(cache, addr);
     if (line) {
-        line->data[0] = data;
+        for (int i = 0; i < BLOCK_SIZE; i++) {
+            block[i] = line->data[i];
+        }
+    } else {
+        for (int i = 0; i < BLOCK_SIZE; i++) {
+            block[i] = 0.0;
+        }
+    }
+    pthread_mutex_unlock(&cache->mutex);
+}
+
+// Establecer bloque completo (4 doubles) - Para handlers del bus
+void cache_set_block(Cache* cache, int addr, const double block[BLOCK_SIZE]) {
+    pthread_mutex_lock(&cache->mutex);
+    CacheLine* line = cache_get_line(cache, addr);
+    if (line) {
+        for (int i = 0; i < BLOCK_SIZE; i++) {
+            line->data[i] = block[i];
+        }
     }
     pthread_mutex_unlock(&cache->mutex);
 }

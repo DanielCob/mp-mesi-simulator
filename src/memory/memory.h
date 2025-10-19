@@ -6,14 +6,16 @@
 #include <stdbool.h>
 
 // Tipos de operaciones de memoria
-typedef enum { MEM_OP_READ, MEM_OP_WRITE } MemOp;
+typedef enum { 
+    MEM_OP_READ_BLOCK,  // Lee un bloque completo (BLOCK_SIZE doubles)
+    MEM_OP_WRITE_BLOCK  // Escribe un bloque completo (BLOCK_SIZE doubles)
+} MemOp;
 
 // Estructura de solicitud de memoria
 typedef struct {
     MemOp op;
-    int addr;
-    double value;           // Para WRITE
-    double result;          // Para READ
+    int addr;                    // Dirección base del bloque
+    double block[BLOCK_SIZE];    // Para operaciones de bloque
     bool processed;
     pthread_cond_t done;
 } MemRequest;
@@ -32,9 +34,9 @@ typedef struct {
 void mem_init(Memory* mem);
 void mem_destroy(Memory* mem);
 
-// Funciones que requieren alineamiento (addr debe ser múltiplo de BLOCK_SIZE)
-double mem_read(Memory* mem, int addr);   // Requiere IS_ALIGNED(addr)
-void mem_write(Memory* mem, int addr, double value);  // Requiere IS_ALIGNED(addr)
+// Funciones de bloque completo (para uso del bus)
+void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE]);
+void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE]);
 
 void* mem_thread_func(void* arg);  // Función del thread de memoria
 
