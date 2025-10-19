@@ -39,8 +39,9 @@ Los PEs comparten una memoria principal común y se comunican a través de un bu
 | **PEs** | 4 PEs, cada uno con 8 registros de 64 bits (`REG0–REG7`). |
 | **Caché** | Privada por PE, 2-way set associative, 16 bloques de 32 bytes. <br>Políticas: *write-allocate* y *write-back*. |
 | **Memoria principal** | 512 posiciones de 64 bits. |
+| **Alineamiento** | **Direcciones deben estar alineadas a múltiplos de BLOCK_SIZE (4)**. <br>Ver [MEMORY_ALIGNMENT.md](MEMORY_ALIGNMENT.md) para detalles. |
 | **Interconect (Bus)** | Responsable de arbitraje, comunicación y coherencia (MESI). |
-| **Threading** | Cada PE, el bus y la memoria deben modelarse con *threads* para simular hardware concurrente. |
+| **Threading** | Cada PE, el bus y la memoria se modelan con *threads* separados (6 total). |
 
 ---
 

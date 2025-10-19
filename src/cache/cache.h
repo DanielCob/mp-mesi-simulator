@@ -28,8 +28,10 @@ typedef struct {
 
 void cache_init(Cache* cache);
 void cache_destroy(Cache* cache);  // Nueva función para limpiar recursos
-double cache_read(Cache* cache, int addr, int pe_id);
-void cache_write(Cache* cache, int addr, double value, int pe_id);
+
+// Funciones que requieren alineamiento (addr debe ser múltiplo de BLOCK_SIZE)
+double cache_read(Cache* cache, int addr, int pe_id);   // Requiere IS_ALIGNED(addr)
+void cache_write(Cache* cache, int addr, double value, int pe_id);  // Requiere IS_ALIGNED(addr)
 
 // Política de reemplazo
 CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id);

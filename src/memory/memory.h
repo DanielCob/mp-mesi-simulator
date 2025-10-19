@@ -31,8 +31,11 @@ typedef struct {
 // Funciones públicas
 void mem_init(Memory* mem);
 void mem_destroy(Memory* mem);
-double mem_read(Memory* mem, int addr);
-void mem_write(Memory* mem, int addr, double value);
+
+// Funciones que requieren alineamiento (addr debe ser múltiplo de BLOCK_SIZE)
+double mem_read(Memory* mem, int addr);   // Requiere IS_ALIGNED(addr)
+void mem_write(Memory* mem, int addr, double value);  // Requiere IS_ALIGNED(addr)
+
 void* mem_thread_func(void* arg);  // Función del thread de memoria
 
 #endif

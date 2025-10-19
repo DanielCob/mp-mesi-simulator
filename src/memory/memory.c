@@ -28,6 +28,18 @@ void mem_destroy(Memory* mem) {
 }
 
 double mem_read(Memory* mem, int addr) {
+    // Verificar alineamiento
+    if (!IS_ALIGNED(addr)) {
+        fprintf(stderr, "[MEMORY ERROR] Read address %d is not aligned to %d-byte boundary\n", 
+                addr, MEM_ALIGNMENT);
+        fprintf(stderr, "               Aligned address would be: %d (down) or %d (up)\n",
+                ALIGN_DOWN(addr), ALIGN_UP(addr));
+        // En producción, podrías abortar aquí
+        // Por ahora, alineamos automáticamente hacia abajo
+        addr = ALIGN_DOWN(addr);
+        fprintf(stderr, "               Using aligned address: %d\n", addr);
+    }
+    
     pthread_mutex_lock(&mem->mutex);
     
     // Esperar si hay otra solicitud en proceso
@@ -57,6 +69,18 @@ double mem_read(Memory* mem, int addr) {
 }
 
 void mem_write(Memory* mem, int addr, double value) {
+    // Verificar alineamiento
+    if (!IS_ALIGNED(addr)) {
+        fprintf(stderr, "[MEMORY ERROR] Write address %d is not aligned to %d-byte boundary\n", 
+                addr, MEM_ALIGNMENT);
+        fprintf(stderr, "               Aligned address would be: %d (down) or %d (up)\n",
+                ALIGN_DOWN(addr), ALIGN_UP(addr));
+        // En producción, podrías abortar aquí
+        // Por ahora, alineamos automáticamente hacia abajo
+        addr = ALIGN_DOWN(addr);
+        fprintf(stderr, "               Using aligned address: %d\n", addr);
+    }
+    
     pthread_mutex_lock(&mem->mutex);
     
     // Esperar si hay otra solicitud en proceso

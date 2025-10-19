@@ -21,6 +21,15 @@ void cache_destroy(Cache* cache) {
 }
 
 double cache_read(Cache* cache, int addr, int pe_id) {
+    // Verificar alineamiento
+    if (!IS_ALIGNED(addr)) {
+        fprintf(stderr, "[CACHE ERROR PE%d] Read address %d is not aligned to %d-byte boundary\n", 
+                pe_id, addr, MEM_ALIGNMENT);
+        fprintf(stderr, "                   Must use aligned addresses. Using ALIGN_DOWN(%d) = %d\n",
+                addr, ALIGN_DOWN(addr));
+        addr = ALIGN_DOWN(addr);
+    }
+    
     pthread_mutex_lock(&cache->mutex);
     
     int set_index = addr % SETS;
@@ -78,6 +87,15 @@ double cache_read(Cache* cache, int addr, int pe_id) {
 }
 
 void cache_write(Cache* cache, int addr, double value, int pe_id) {
+    // Verificar alineamiento
+    if (!IS_ALIGNED(addr)) {
+        fprintf(stderr, "[CACHE ERROR PE%d] Write address %d is not aligned to %d-byte boundary\n", 
+                pe_id, addr, MEM_ALIGNMENT);
+        fprintf(stderr, "                   Must use aligned addresses. Using ALIGN_DOWN(%d) = %d\n",
+                addr, ALIGN_DOWN(addr));
+        addr = ALIGN_DOWN(addr);
+    }
+    
     pthread_mutex_lock(&cache->mutex);
     
     int set_index = addr % SETS;
