@@ -3,6 +3,7 @@
 
 #include "include/config.h"
 #include "mesi/mesi.h"
+#include <pthread.h>
 
 // Forward declaration para evitar dependencia circular
 struct Bus;
@@ -22,9 +23,11 @@ typedef struct {
 typedef struct {
     Bus* bus;
     CacheSet sets[SETS];
+    pthread_mutex_t mutex;  // Mutex para proteger acceso concurrente
 } Cache;
 
 void cache_init(Cache* cache);
+void cache_destroy(Cache* cache);  // Nueva función para limpiar recursos
 double cache_read(Cache* cache, int addr, int pe_id);
 void cache_write(Cache* cache, int addr, double value, int pe_id);
 

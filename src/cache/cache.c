@@ -4,6 +4,10 @@
 
 void cache_init(Cache* cache) {
     cache->bus = NULL;
+    
+    // Inicializar mutex
+    pthread_mutex_init(&cache->mutex, NULL);
+    
     for (int i = 0; i < SETS; i++)
         for (int j = 0; j < WAYS; j++) {
             cache->sets[i].lines[j].valid = 0;
@@ -11,7 +15,14 @@ void cache_init(Cache* cache) {
         }
 }
 
+void cache_destroy(Cache* cache) {
+    // Destruir mutex
+    pthread_mutex_destroy(&cache->mutex);
+}
+
 double cache_read(Cache* cache, int addr, int pe_id) {
+    pthread_mutex_lock(&cache->mutex);
+    
     int set_index = addr % SETS;
     unsigned long tag = addr / SETS;
     CacheSet* set = &cache->sets[set_index];
@@ -25,7 +36,9 @@ double cache_read(Cache* cache, int addr, int pe_id) {
             if (state == M || state == E || state == S) {
                 printf("[PE%d] READ HIT en set %d (way %d, estado %c) -> valor=%.2f\n", 
                        pe_id, set_index, i, "MESI"[state], set->lines[i].data[0]);
-                return set->lines[i].data[0];
+                double result = set->lines[i].data[0];
+                pthread_mutex_unlock(&cache->mutex);
+                return result;
             }
             
             // Línea con tag correcto pero invalidada (estado I)
@@ -47,23 +60,26 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     victim->tag = tag;
     victim->state = I;  // Temporalmente inválido antes del broadcast
 
+    // IMPORTANTE: Desbloquear cache local antes de usar el bus
+    // para evitar deadlock (el bus necesitará lockear otras cachés)
+    pthread_mutex_unlock(&cache->mutex);
+    
     // Enviar BUS_RD - el handler actualizará el estado y datos
     bus_broadcast(cache->bus, BUS_RD, addr, pe_id);
-/* 
-    // El handler debería haber actualizado la línea a E o S
-    // Si por alguna razón no lo hizo, leer de memoria como fallback
-    if (victim->state == I) {
-        printf("[PE%d] WARNING: handler no actualizó estado, leyendo de memoria\n", pe_id);
-        victim->data[0] = mem_read(addr);
-        victim->state = E;
-    } */
-
+    
+    // Re-lockear para leer el resultado
+    pthread_mutex_lock(&cache->mutex);
+    
     printf("[PE%d] READ completado -> valor=%.2f (estado %c)\n", 
            pe_id, victim->data[0], "MESI"[victim->state]);
-    return victim->data[0];
+    double result = victim->data[0];
+    pthread_mutex_unlock(&cache->mutex);
+    return result;
 }
 
 void cache_write(Cache* cache, int addr, double value, int pe_id) {
+    pthread_mutex_lock(&cache->mutex);
+    
     int set_index = addr % SETS;
     unsigned long tag = addr / SETS;
     CacheSet* set = &cache->sets[set_index];
@@ -78,6 +94,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 printf("[PE%d] WRITE HIT en set %d (way %d, estado M) -> escribiendo %.2f\n", 
                        pe_id, set_index, i, value);
                 set->lines[i].data[0] = value;
+                pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
             else if (state == E) {
@@ -86,15 +103,23 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                        pe_id, set_index, i, value);
                 set->lines[i].data[0] = value;
                 set->lines[i].state = M;
+                pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
             else if (state == S) {
                 // HIT en S: necesitamos invalidar otras copias con BUS_UPGR
                 printf("[PE%d] WRITE HIT en set %d (way %d, estado S->M, enviando BUS_UPGR) -> escribiendo %.2f\n", 
                        pe_id, set_index, i, value);
+                
+                // Desbloquear antes de usar el bus
+                pthread_mutex_unlock(&cache->mutex);
                 bus_broadcast(cache->bus, BUS_UPGR, addr, pe_id);
+                
+                // Re-lockear para actualizar
+                pthread_mutex_lock(&cache->mutex);
                 set->lines[i].data[0] = value;
                 set->lines[i].state = M;
+                pthread_mutex_unlock(&cache->mutex);
                 return;
             }
             // Si estado == I, continuar al MISS (línea invalidada)
@@ -114,13 +139,21 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     victim->tag = tag;
     victim->state = I;  // Temporalmente inválido antes del broadcast
 
+    // Desbloquear antes de usar el bus
+    pthread_mutex_unlock(&cache->mutex);
+    
     // Enviar BUS_RDX - el handler invalidará otras copias y traerá el dato
     bus_broadcast(cache->bus, BUS_RDX, addr, pe_id);
 
+    // Re-lockear para escribir
+    pthread_mutex_lock(&cache->mutex);
+    
     // Escribir el nuevo valor y marcar como M
     victim->data[0] = value;
     victim->state = M;
     printf("[PE%d] WRITE completado -> valor=%.2f (estado M)\n", pe_id, value);
+    
+    pthread_mutex_unlock(&cache->mutex);
 }
 
 CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
@@ -175,25 +208,35 @@ CacheLine* cache_get_line(Cache* cache, int addr) {
 }
 
 MESI_State cache_get_state(Cache* cache, int addr) {
+    pthread_mutex_lock(&cache->mutex);
     CacheLine* line = cache_get_line(cache, addr);
-    return line ? line->state : I;
+    MESI_State state = line ? line->state : I;
+    pthread_mutex_unlock(&cache->mutex);
+    return state;
 }
 
 void cache_set_state(Cache* cache, int addr, MESI_State new_state) {
+    pthread_mutex_lock(&cache->mutex);
     CacheLine* line = cache_get_line(cache, addr);
     if (line) {
         line->state = new_state;
     }
+    pthread_mutex_unlock(&cache->mutex);
 }
 
 double cache_get_data(Cache* cache, int addr) {
+    pthread_mutex_lock(&cache->mutex);
     CacheLine* line = cache_get_line(cache, addr);
-    return line ? line->data[0] : 0.0;
+    double data = line ? line->data[0] : 0.0;
+    pthread_mutex_unlock(&cache->mutex);
+    return data;
 }
 
 void cache_set_data(Cache* cache, int addr, double data) {
+    pthread_mutex_lock(&cache->mutex);
     CacheLine* line = cache_get_line(cache, addr);
     if (line) {
         line->data[0] = data;
     }
+    pthread_mutex_unlock(&cache->mutex);
 }

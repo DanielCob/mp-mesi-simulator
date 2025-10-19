@@ -35,5 +35,10 @@ int main() {
     for (int i = 0; i < NUM_PES; i++)
         pthread_join(threads[i], NULL);
 
+    // Limpiar recursos
+    for (int i = 0; i < NUM_PES; i++) {
+        cache_destroy(&caches[i]);
+    }
+
     return 0;
 }
