@@ -1,6 +1,7 @@
 #include "pe.h"
 #include "pe/registers.h"
 #include "pe/isa.h"
+#include "pe/loader.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -9,73 +10,122 @@ void* pe_run(void* arg) {
     PE* pe = (PE*)arg;
     printf("[PE%d] Starting thread...\n", pe->id);
     
-    // ===== TEST DE ISA =====
-    printf("\n=== PE%d: Probando ISA ===\n", pe->id);
+    // ===== CARGAR PROGRAMA DESDE ARCHIVO =====
+    // Cada PE puede ejecutar un programa diferente o el mismo
+    // Formato: test_suma.asm, test_loop.asm, etc.
     
-    // Crear programa de prueba simple
-    // Programa: Suma dos números de memoria y guarda resultado
-    // addr[0] = 5.0
-    // addr[1] = 3.0
-    // R0 = memoria[0]
-    // R1 = memoria[1]
-    // R2 = R0 + R1
-    // memoria[2] = R2
-    // R3 = R2 * R0
-    // memoria[3] = R3
-    // HALT
-    
-    Instruction program[] = {
-        {OP_LOAD,  0, 0, 0, pe->id * 10 + 0, 0},      // [0] LOAD R0, [pe->id*10+0]
-        {OP_LOAD,  1, 0, 0, pe->id * 10 + 1, 0},      // [1] LOAD R1, [pe->id*10+1]
-        {OP_FADD,  2, 0, 1, 0, 0},                     // [2] FADD R2, R0, R1
-        {OP_STORE, 2, 0, 0, pe->id * 10 + 2, 0},      // [3] STORE R2, [pe->id*10+2]
-        {OP_FMUL,  3, 2, 0, 0, 0},                     // [4] FMUL R3, R2, R0
-        {OP_STORE, 3, 0, 0, pe->id * 10 + 3, 0},      // [5] STORE R3, [pe->id*10+3]
-        {OP_INC,   0, 0, 0, 0, 0},                     // [6] INC R0
-        {OP_DEC,   1, 0, 0, 0, 0},                     // [7] DEC R1
-        {OP_HALT,  0, 0, 0, 0, 0}                      // [8] HALT
+    // Por defecto, todos los PEs ejecutan el mismo programa
+    // Puedes cambiar esto para que cada PE ejecute un programa diferente
+    const char* program_files[] = {
+        "test_suma.asm",      // PE0
+        "test_producto.asm",  // PE1
+        "test_loop.asm",      // PE2
+        "test_jnz.asm"        // PE3
     };
     
-    size_t program_size = sizeof(program) / sizeof(Instruction);
+    const char* filename = program_files[pe->id];
     
-    // Inicializar memoria con valores de prueba
+    printf("\n[PE%d] ========== CARGANDO PROGRAMA ==========\n", pe->id);
+    printf("[PE%d] Archivo: %s\n", pe->id, filename);
+    
+    Program* prog = load_program(filename);
+    
+    if (!prog) {
+        fprintf(stderr, "[PE%d] ERROR: No se pudo cargar el programa %s\n", pe->id, filename);
+        return NULL;
+    }
+    
+    printf("[PE%d] Programa cargado: %d instrucciones\n", pe->id, prog->size);
+    
+    // Imprimir el programa cargado
+    printf("\n[PE%d] Contenido del programa:\n", pe->id);
+    for (int i = 0; i < prog->size && i < 10; i++) {  // Mostrar máximo 10 instrucciones
+        Instruction* inst = &prog->code[i];
+        printf("[PE%d]   [%2d] %s ", pe->id, i, 
+               inst->op == OP_LOAD ? "LOAD" :
+               inst->op == OP_STORE ? "STORE" :
+               inst->op == OP_FADD ? "FADD" :
+               inst->op == OP_FMUL ? "FMUL" :
+               inst->op == OP_INC ? "INC" :
+               inst->op == OP_DEC ? "DEC" :
+               inst->op == OP_JNZ ? "JNZ" : "HALT");
+        
+        switch (inst->op) {
+            case OP_LOAD:
+            case OP_STORE:
+                printf("R%d, [%d]", inst->rd, inst->addr);
+                break;
+            case OP_FADD:
+            case OP_FMUL:
+                printf("R%d, R%d, R%d", inst->rd, inst->ra, inst->rb);
+                break;
+            case OP_INC:
+            case OP_DEC:
+                printf("R%d", inst->rd);
+                break;
+            case OP_JNZ:
+                printf("R%d, %d", inst->rd, inst->label);
+                break;
+            case OP_HALT:
+                break;
+        }
+        printf("\n");
+    }
+    if (prog->size > 10) {
+        printf("[PE%d]   ... (%d instrucciones más)\n", pe->id, prog->size - 10);
+    }
+    
+    // Inicializar memoria con valores de prueba para cada PE
+    // Cada PE tiene su región de memoria: PE0 usa 100-199, PE1 usa 200-299, etc.
+    int base_addr = pe->id * 100;
     double val1 = 5.0 + pe->id;
     double val2 = 3.0 + pe->id * 0.5;
     
-    printf("[PE%d] Inicializando memoria: addr[%d]=%.2f, addr[%d]=%.2f\n", 
-           pe->id, pe->id * 10 + 0, val1, pe->id * 10 + 1, val2);
+    printf("\n[PE%d] Inicializando memoria de prueba:\n", pe->id);
+    printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr, val1);
+    printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr + 4, val2);
     
-    cache_write(pe->cache, pe->id * 10 + 0, val1, pe->id);
-    cache_write(pe->cache, pe->id * 10 + 1, val2, pe->id);
+    cache_write(pe->cache, base_addr, val1, pe->id);
+    cache_write(pe->cache, base_addr + 4, val2, pe->id);
     
-    sleep(pe->id);  // Escalonar ejecución para ver mejor
+    // Escalonar ejecución para reducir contención
+    sleep(pe->id);
     
     printf("\n[PE%d] ========== INICIANDO EJECUCIÓN ==========\n", pe->id);
     
     // Ejecutar programa
     pe->rf.pc = 0;
     int running = 1;
-    int max_iterations = 100;  // Prevenir loops infinitos
+    int max_iterations = 1000;  // Prevenir loops infinitos
     int iterations = 0;
     
     while (running && iterations < max_iterations) {
-        if (pe->rf.pc >= program_size) {
-            printf("[PE%d] ERROR: PC fuera de rango (%lu >= %zu)\n", pe->id, pe->rf.pc, program_size);
+        if (pe->rf.pc >= (uint64_t)prog->size) {
+            printf("[PE%d] ERROR: PC fuera de rango (%lu >= %d)\n", 
+                   pe->id, pe->rf.pc, prog->size);
             break;
         }
         
-        running = execute_instruction(&program[pe->rf.pc], &pe->rf, pe->cache, pe->id);
+        running = execute_instruction(&prog->code[pe->rf.pc], 
+                                      &pe->rf, 
+                                      pe->cache, 
+                                      pe->id);
         iterations++;
     }
     
     if (iterations >= max_iterations) {
-        printf("[PE%d] ERROR: Máximo de iteraciones alcanzado\n", pe->id);
+        printf("[PE%d] ADVERTENCIA: Máximo de iteraciones alcanzado (%d)\n", 
+               pe->id, max_iterations);
     }
     
     printf("\n[PE%d] ========== EJECUCIÓN TERMINADA ==========\n", pe->id);
+    printf("[PE%d] Iteraciones ejecutadas: %d\n", pe->id, iterations);
     
-    // Imprimir estado final
+    // Imprimir estado final de registros
     reg_print(&pe->rf, pe->id);
+    
+    // Liberar memoria del programa
+    free_program(prog);
     
     sleep(1);
     printf("[PE%d] Finished.\n", pe->id);
