@@ -10,6 +10,10 @@ void mem_init() {
         main_memory[i] = 0.0;
 }
 
+void mem_destroy() {
+    pthread_mutex_destroy(&mem_lock);
+}
+
 double mem_read(int addr) {
     pthread_mutex_lock(&mem_lock);
     double val = main_memory[addr];
