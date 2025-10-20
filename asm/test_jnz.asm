@@ -1,13 +1,18 @@
 # Programa de prueba: Loop simple con JNZ
-# Incrementa 3 veces y guarda el resultado
+# Loop que decrementa R0 desde 8 hasta 0, incrementando R1 en cada iteración
+# Resultado esperado: R0=0, R1=8
 
 LOAD R0 0        # Cargar 0 desde memoria[0]
 INC R0           # R0 = 1
 INC R0           # R0 = 2  
 INC R0           # R0 = 3
-STORE R0 100     # Guardar resultado (3)
+INC R0           # R0 = 4
+INC R0           # R0 = 5
+INC R0           # R0 = 6
+INC R0           # R0 = 7
+INC R0           # R0 = 8
 LOOP:
-    DEC R0
-    INC R1
-    JNZ R0 LOOP
+    DEC R0       # R0--
+    INC R1       # R1++
+    JNZ R0 LOOP  # Si R0 != 0, volver a LOOP
 HALT             # Terminar

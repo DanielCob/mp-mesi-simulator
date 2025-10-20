@@ -12,12 +12,27 @@ void cache_init(Cache* cache) {
         for (int j = 0; j < WAYS; j++) {
             cache->sets[i].lines[j].valid = 0;
             cache->sets[i].lines[j].state = I;
+            cache->sets[i].lines[j].lru_bit = 0;
         }
 }
 
 void cache_destroy(Cache* cache) {
     // Destruir mutex
     pthread_mutex_destroy(&cache->mutex);
+}
+
+// Actualizar bit LRU cuando se accede a una línea
+// El way accedido se marca como recientemente usado (1)
+// Los demás ways del mismo set se marcan como menos recientemente usados (0)
+static void cache_update_lru(Cache* cache, int set_index, int accessed_way) {
+    CacheSet* set = &cache->sets[set_index];
+    for (int i = 0; i < WAYS; i++) {
+        if (i == accessed_way) {
+            set->lines[i].lru_bit = 1;  // Marcar como recientemente usado
+        } else {
+            set->lines[i].lru_bit = 0;  // Marcar como menos recientemente usado
+        }
+    }
 }
 
 double cache_read(Cache* cache, int addr, int pe_id) {
@@ -45,7 +60,8 @@ double cache_read(Cache* cache, int addr, int pe_id) {
             // HIT: estados M, E o S pueden servir la lectura directamente
             if (state == M || state == E || state == S) {
                 double result = set->lines[i].data[offset];  // ← Usa el offset aquí
-                printf("[PE%d] READ HIT en set %d (way %d, estado %c, offset %d) -> valor=%.2f\n", 
+                cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
+                printf("[PE%d] READ HIT en set %d (way %d, estado %c, offset %d, LRU actualizado) -> valor=%.2f\n", 
                        pe_id, set_index, i, "MESI"[state], offset, result);
                 pthread_mutex_unlock(&cache->mutex);
                 return result;
@@ -62,8 +78,11 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     // MISS: No hay hit válido, necesitamos traer la línea
     printf("[PE%d] READ MISS en set %d, enviando BUS_RD\n", pe_id, set_index);
 
-    // Seleccionar línea víctima usando la política de reemplazo
+    // Seleccionar línea víctima usando la política de reemplazo LRU
     CacheLine* victim = cache_select_victim(cache, set_index, pe_id);
+    
+    // Calcular el índice del way de la víctima para actualizar LRU
+    int victim_way = victim - set->lines;
 
     // Preparar la línea para recibir datos
     victim->valid = 1;
@@ -81,8 +100,9 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     pthread_mutex_lock(&cache->mutex);
     
     double result = victim->data[offset];  // ← Usa el offset aquí
-    printf("[PE%d] READ completado -> bloque traído, offset %d, valor=%.2f (estado %c)\n", 
-           pe_id, offset, result, "MESI"[victim->state]);
+    cache_update_lru(cache, set_index, victim_way);  // ← Actualizar LRU después de traer el bloque
+    printf("[PE%d] READ completado -> bloque traído en way %d, offset %d, valor=%.2f (estado %c, LRU actualizado)\n", 
+           pe_id, victim_way, offset, result, "MESI"[victim->state]);
     pthread_mutex_unlock(&cache->mutex);
     return result;
 }
@@ -111,18 +131,20 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
             
             if (state == M) {
                 // HIT en M: escribir directamente, ya tenemos permisos exclusivos
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado M, offset %d) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, offset, value);
                 set->lines[i].data[offset] = value;  // ← Usa el offset aquí
+                cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
+                printf("[PE%d] WRITE HIT en set %d (way %d, estado M, offset %d, LRU actualizado) -> escribiendo %.2f\n", 
+                       pe_id, set_index, i, offset, value);
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
             else if (state == E) {
                 // HIT en E: escribir y cambiar a M
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado E->M, offset %d) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, offset, value);
                 set->lines[i].data[offset] = value;  // ← Usa el offset aquí
                 set->lines[i].state = M;
+                cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
+                printf("[PE%d] WRITE HIT en set %d (way %d, estado E->M, offset %d, LRU actualizado) -> escribiendo %.2f\n", 
+                       pe_id, set_index, i, offset, value);
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
@@ -139,6 +161,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 pthread_mutex_lock(&cache->mutex);
                 set->lines[i].data[offset] = value;  // ← Usa el offset aquí
                 set->lines[i].state = M;
+                cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             }
@@ -151,8 +174,11 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     printf("[PE%d] WRITE MISS en set %d, enviando BUS_RDX -> valor a escribir=%.2f\n", 
            pe_id, set_index, value);
 
-    // Seleccionar línea víctima usando la política de reemplazo
+    // Seleccionar línea víctima usando la política de reemplazo LRU
     CacheLine* victim = cache_select_victim(cache, set_index, pe_id);
+    
+    // Calcular el índice del way de la víctima para actualizar LRU
+    int victim_way = victim - set->lines;
 
     // Preparar la línea para la escritura
     victim->valid = 1;
@@ -171,8 +197,9 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     // Escribir el nuevo valor en el offset correcto y marcar como M
     victim->data[offset] = value;  // ← Usa el offset aquí
     victim->state = M;
-    printf("[PE%d] WRITE completado -> bloque traído, offset %d, valor=%.2f (estado M)\n", 
-           pe_id, offset, value);
+    cache_update_lru(cache, set_index, victim_way);  // ← Actualizar LRU
+    printf("[PE%d] WRITE completado -> bloque traído en way %d, offset %d, valor=%.2f (estado M, LRU actualizado)\n", 
+           pe_id, victim_way, offset, value);
     
     pthread_mutex_unlock(&cache->mutex);
 }
@@ -181,7 +208,7 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
     CacheSet* set = &cache->sets[set_index];
     CacheLine* victim = NULL;
 
-    // Política 0 (nueva): Si hay una línea inválida con el tag correcto, reutilizarla
+    // Política 0: Si hay una línea inválida con el tag correcto, reutilizarla
     // Esto previene seleccionar una víctima diferente cuando ya tenemos el slot correcto
     for (int i = 0; i < WAYS; i++) {
         if (set->lines[i].valid && set->lines[i].state == I) {
@@ -200,9 +227,21 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
         }
     }
     
-    // Política 2: Si no hay líneas inválidas, usar way 0 (FIFO simple)
-    victim = &set->lines[0];
-    printf("[PE%d] Víctima: way 0 (política FIFO)\n", pe_id);
+    // Política 2 (LRU): Si todas las líneas son válidas, usar política LRU
+    // Seleccionar la línea con lru_bit = 0 (menos recientemente usada)
+    for (int i = 0; i < WAYS; i++) {
+        if (set->lines[i].lru_bit == 0) {
+            victim = &set->lines[i];
+            printf("[PE%d] Víctima: way %d (política LRU - bit=0, menos recientemente usado)\n", pe_id, i);
+            break;
+        }
+    }
+    
+    // Fallback: Si por alguna razón no encontramos víctima (todos tienen bit=1), usar way 0
+    if (victim == NULL) {
+        victim = &set->lines[0];
+        printf("[PE%d] Víctima: way 0 (fallback LRU)\n", pe_id);
+    }
     
     // Si la víctima está en M, hacer writeback antes de reemplazar
     if (victim->state == M) {

@@ -14,6 +14,7 @@ typedef struct {
     MESI_State state;
     double data[BLOCK_SIZE];
     int valid;
+    int lru_bit;  // Bit LRU: 1 = recientemente usado, 0 = menos recientemente usado
 } CacheLine;
 
 typedef struct {
