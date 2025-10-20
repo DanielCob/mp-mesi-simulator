@@ -82,7 +82,7 @@ void* pe_run(void* arg) {
     // Ejecutar programa
     pe->rf.pc = 0;
     int running = 1;
-    int max_iterations = 10000;  // Límite alto para permitir busy-waiting prolongado con round-robin
+    int max_iterations = 100;
     int iterations = 0;
     
     while (running && iterations < max_iterations) {
