@@ -134,6 +134,9 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             
         case OP_HALT:
             // HALT - Terminar ejecución
+            // Hacer writeback de todas las líneas modificadas a través del bus
+            printf("  [PE%d] HALT: Haciendo writeback de líneas modificadas...\n", pe_id);
+            cache_flush(cache, pe_id);
             printf("  [PE%d] HALT: Terminando ejecución\n", pe_id);
             return 0;  // Señal para detener ejecución
             

@@ -17,7 +17,8 @@ INCLUDES = -I$(SRC_DIR) \
            -I$(SRC_DIR)/memory \
            -I$(SRC_DIR)/pe \
            -I$(SRC_DIR)/mesi \
-           -I$(SRC_DIR)/stats
+           -I$(SRC_DIR)/stats \
+           -I$(SRC_DIR)/dotprod
 
 # Buscar todos los archivos .c en src/ y subcarpetas
 SRC = $(shell find $(SRC_DIR) -name "*.c")

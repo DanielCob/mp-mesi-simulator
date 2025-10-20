@@ -49,4 +49,7 @@ void cache_set_state(Cache* cache, int addr, MESI_State new_state);
 void cache_get_block(Cache* cache, int addr, double block[BLOCK_SIZE]);
 void cache_set_block(Cache* cache, int addr, const double block[BLOCK_SIZE]);
 
+// Función para hacer writeback de todas las líneas modificadas (para HALT)
+void cache_flush(Cache* cache, int pe_id);
+
 #endif

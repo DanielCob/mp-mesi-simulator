@@ -11,16 +11,15 @@ void* pe_run(void* arg) {
     printf("[PE%d] Starting thread...\n", pe->id);
     
     // ===== CARGAR PROGRAMA DESDE ARCHIVO =====
-    // Cada PE puede ejecutar un programa diferente o el mismo
-    // Formato: test_suma.asm, test_loop.asm, etc.
+    // Cada PE ejecuta su parte del producto punto paralelo
+    // PE0-PE2: Calculan productos parciales
+    // PE3: Calcula su producto parcial + reducción final
     
-    // Por defecto, todos los PEs ejecutan el mismo programa
-    // Puedes cambiar esto para que cada PE ejecute un programa diferente
     const char* program_files[] = {
-        "asm/test_suma.asm",      // PE0
-        "asm/test_producto.asm",  // PE1
-        "asm/test_loop.asm",       // PE2
-        "asm/test_isa.asm"       // PE3
+        "asm/dotprod_pe0.asm",   // PE0: elementos [0-3]
+        "asm/dotprod_pe1.asm",   // PE1: elementos [4-7]
+        "asm/dotprod_pe2.asm",   // PE2: elementos [8-11]
+        "asm/dotprod_pe3.asm"    // PE3: elementos [12-15] + reducción
     };
     
     const char* filename = program_files[pe->id];
@@ -75,19 +74,8 @@ void* pe_run(void* arg) {
         printf("[PE%d]   ... (%d instrucciones más)\n", pe->id, prog->size - 10);
     }
     
-    // Inicializar memoria con valores de prueba para cada PE
-    // Cada PE tiene su región de memoria: PE0 usa 100-199, PE1 usa 200-299, etc.
-    int base_addr = 100 + pe->id * 100;  // PE0→100, PE1→200, PE2→300, PE3→400
-    
-    double val1 = 6.0;
-    double val2 = 3.5;
-    
-    printf("\n[PE%d] Inicializando memoria de prueba:\n", pe->id);
-    printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr, val1);
-    printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr + 4, val2);
-    
-    cache_write(pe->cache, base_addr, val1, pe->id);
-    cache_write(pe->cache, base_addr + 4, val2, pe->id);
+    // NOTA: La memoria ya fue inicializada por dotprod_init_data() en main.c
+    // No se necesita inicialización adicional aquí.
     
     printf("\n[PE%d] ========== INICIANDO EJECUCIÓN ==========\n", pe->id);
     
