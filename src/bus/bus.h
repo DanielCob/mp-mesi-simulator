@@ -16,26 +16,27 @@ struct Bus; // Declaración adelantada
 // Tipo de puntero a función handler
 typedef void (*BusHandler)(struct Bus* bus, int addr, int src_pe);
 
-// Estructura de solicitud del bus (para la cola)
+// Estructura de solicitud del bus (una por PE)
 typedef struct {
     BusMsg msg;
     int addr;
     int src_pe;
-    bool processed;
-    pthread_cond_t done;  // Señal de que la operación terminó
-} BusRequest;
+    volatile bool has_request;   // Si hay solicitud pendiente
+    volatile bool processed;     // Si ya fue procesada
+    pthread_cond_t done;         // Condition variable para este PE
+} PERequest;
 
 // Estructura principal del bus
 typedef struct Bus {
     Cache* caches[NUM_PES];
     Memory* memory;              // Referencia a la memoria
-    BusHandler handlers[4];  // Dispatch table
-    pthread_mutex_t mutex;   // Protección del bus
+    BusHandler handlers[4];      // Dispatch table
+    pthread_mutex_t mutex;       // Protección del bus
     pthread_cond_t request_ready;  // Señal de nueva solicitud
-    BusRequest current_request;    // Solicitud actual
-    bool has_request;              // Hay solicitud pendiente
-    bool running;                  // El bus está corriendo
-    BusStats stats;                // Estadísticas del bus
+    PERequest requests[NUM_PES]; // Una solicitud por PE (simple)
+    int next_pe;                 // Siguiente PE a atender (round-robin)
+    bool running;                // El bus está corriendo
+    BusStats stats;              // Estadísticas del bus
 } Bus;
 
 // Funciones públicas
