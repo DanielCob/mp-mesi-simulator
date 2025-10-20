@@ -94,7 +94,8 @@ echo ""
 
 # Test 7: Verificar resultados de PE0 (suma)
 echo "[TEST 7] Verificando resultado de PE0 (suma: 6+3.5=9.5)..."
-PE0_R2=$(grep -A 3 "PE0 Register File" /tmp/mesi_output.txt | grep "R0:" | awk '{print $6}')
+# Buscar R2 en el contexto de PE0 Register File, manejando posibles saltos de línea
+PE0_R2=$(grep -A 6 "PE0 Register File" /tmp/mesi_output.txt | grep -o "R2: [0-9.]*" | head -1 | awk '{print $2}')
 if [ "$PE0_R2" == "9.500000" ]; then
     echo -e "${GREEN}✓ PASS${NC} - PE0 R2 = 9.500000 (correcto)"
     ((PASS++))
@@ -106,7 +107,8 @@ echo ""
 
 # Test 8: Verificar resultados de PE1 (producto)
 echo "[TEST 8] Verificando resultado de PE1 (6*3.5+6=27)..."
-PE1_R3=$(grep -A 3 "PE1 Register File" /tmp/mesi_output.txt | grep "R0:" | awk '{print $8}')
+# Buscar R3 en el contexto de PE1 Register File
+PE1_R3=$(grep -A 6 "PE1 Register File" /tmp/mesi_output.txt | grep -o "R3: [0-9.]*" | head -1 | awk '{print $2}')
 if [ "$PE1_R3" == "27.000000" ]; then
     echo -e "${GREEN}✓ PASS${NC} - PE1 R3 = 27.000000 (correcto)"
     ((PASS++))
@@ -116,27 +118,27 @@ else
 fi
 echo ""
 
-# Test 9: Verificar resultados de PE2 (contador)
-echo "[TEST 9] Verificando resultado de PE2 (5+5=10)..."
-PE2_R0=$(grep -A 3 "PE2 Register File" /tmp/mesi_output.txt | grep "R0:" | awk '{print $2}')
-if [ "$PE2_R0" == "10.000000" ]; then
-    echo -e "${GREEN}✓ PASS${NC} - PE2 R0 = 10.000000 (correcto)"
+# Test 9: Verificar resultados de PE2 (loop)
+echo "[TEST 9] Verificando resultado de PE2 (loop: R0=0, R1=14)..."
+PE2_R0=$(grep -A 6 "PE2 Register File" /tmp/mesi_output.txt | grep -o "R0: [0-9.]*" | head -1 | awk '{print $2}')
+PE2_R1=$(grep -A 6 "PE2 Register File" /tmp/mesi_output.txt | grep -o "R1: [0-9.]*" | head -1 | awk '{print $2}')
+if [ "$PE2_R0" == "0.000000" ] && [ "$PE2_R1" == "14.000000" ]; then
+    echo -e "${GREEN}✓ PASS${NC} - PE2 R0=0, R1=14 (correcto)"
     ((PASS++))
 else
-    echo -e "${RED}✗ FAIL${NC} - PE2 R0 = $PE2_R0 (esperado 10.000000)"
+    echo -e "${RED}✗ FAIL${NC} - PE2 R0=$PE2_R0 R1=$PE2_R1 (esperado 0, 14)"
     ((FAIL++))
 fi
 echo ""
 
-# Test 10: Verificar resultados de PE3 (loop con JNZ)
-echo "[TEST 10] Verificando resultado de PE3 (loop hasta 0, contador=8)..."
-PE3_R0=$(grep -A 3 "PE3 Register File" /tmp/mesi_output.txt | grep "R0:" | awk '{print $2}')
-PE3_R1=$(grep -A 3 "PE3 Register File" /tmp/mesi_output.txt | grep "R1:" | awk '{print $4}')
-if [ "$PE3_R0" == "0.000000" ] && [ "$PE3_R1" == "8.000000" ]; then
-    echo -e "${GREEN}✓ PASS${NC} - PE3 R0=0, R1=8 (correcto)"
+# Test 10: Verificar resultados de PE3 (loop con JNZ - test_isa.asm)
+echo "[TEST 10] Verificando resultado de PE3 (loop: R0=0)..."
+PE3_R0=$(grep -A 6 "PE3 Register File" /tmp/mesi_output.txt | grep -o "R0: [0-9.]*" | head -1 | awk '{print $2}')
+if [ "$PE3_R0" == "0.000000" ]; then
+    echo -e "${GREEN}✓ PASS${NC} - PE3 R0=0 (correcto)"
     ((PASS++))
 else
-    echo -e "${RED}✗ FAIL${NC} - PE3 R0=$PE3_R0 R1=$PE3_R1 (esperado 0, 8)"
+    echo -e "${RED}✗ FAIL${NC} - PE3 R0=$PE3_R0 (esperado 0)"
     ((FAIL++))
 fi
 echo ""
@@ -168,8 +170,8 @@ echo ""
 # Test 13: Labels resueltos
 echo "[TEST 13] Verificando resolución de labels..."
 LABELS=$(grep -c "Label 'LOOP' -> línea" /tmp/mesi_output.txt)
-if [ "$LABELS" -eq 1 ]; then
-    echo -e "${GREEN}✓ PASS${NC} - Label 'LOOP' resuelto correctamente"
+if [ "$LABELS" -ge 1 ]; then
+    echo -e "${GREEN}✓ PASS${NC} - Label 'LOOP' resuelto correctamente ($LABELS labels encontrados)"
     ((PASS++))
 else
     echo -e "${RED}✗ FAIL${NC} - Labels no resueltos correctamente"

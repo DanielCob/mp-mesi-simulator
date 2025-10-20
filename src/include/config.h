@@ -3,7 +3,7 @@
 
 #define NUM_PES 4
 #define SETS 16
-#define WAYS 2
+#define WAYS 2 // Apesar de que es parametrizable, la política de reemplazo actual es LRU entre 2 ways
 #define BLOCK_SIZE 4 // 4 doubles (32 bytes)
 #define MEM_SIZE 512
 

@@ -19,8 +19,8 @@ void* pe_run(void* arg) {
     const char* program_files[] = {
         "asm/test_suma.asm",      // PE0
         "asm/test_producto.asm",  // PE1
-        "asm/test_loop.asm",      // PE2
-        "asm/test_jnz.asm"        // PE3
+        "asm/test_loop.asm",       // PE2
+        "asm/test_isa.asm"       // PE3
     };
     
     const char* filename = program_files[pe->id];
@@ -64,7 +64,7 @@ void* pe_run(void* arg) {
                 printf("R%d", inst->rd);
                 break;
             case OP_JNZ:
-                printf("R%d, %d", inst->rd, inst->label);
+                printf("%d", inst->label);
                 break;
             case OP_HALT:
                 break;
@@ -79,21 +79,8 @@ void* pe_run(void* arg) {
     // Cada PE tiene su región de memoria: PE0 usa 100-199, PE1 usa 200-299, etc.
     int base_addr = 100 + pe->id * 100;  // PE0→100, PE1→200, PE2→300, PE3→400
     
-    // Valores específicos por PE según sus programas:
-    // PE0 (test_suma.asm): 6.0 + 3.5 = 9.5
-    // PE1 (test_producto.asm): 6.0 * 3.5 + 6.0 = 27.0
-    // PE2 (test_loop.asm): 5.0 + 5.0 = 10.0
-    // PE3 (test_jnz.asm): loop desde 8 hasta 0
-    double val1, val2;
-    if (pe->id == 2) {
-        // PE2 necesita 5.0 + 5.0
-        val1 = 5.0;
-        val2 = 5.0;
-    } else {
-        // PE0, PE1, PE3 usan 6.0 y 3.5
-        val1 = 6.0;
-        val2 = 3.5;
-    }
+    double val1 = 6.0;
+    double val2 = 3.5;
     
     printf("\n[PE%d] Inicializando memoria de prueba:\n", pe->id);
     printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr, val1);

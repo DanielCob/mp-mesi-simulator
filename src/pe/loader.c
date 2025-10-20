@@ -299,15 +299,12 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             break;
             
         case OP_JNZ:
-            // JNZ Rd, label (puede ser número o nombre de label)
+            // JNZ label (usa zero_flag implícitamente)
             {
                 char label_str[MAX_LABEL_NAME];
-                if (sscanf(operands, "%7s %63s", reg1, label_str) == 2) {
-                    inst->rd = parse_register(reg1);
-                    if (inst->rd < 0) {
-                        fprintf(stderr, "[Loader] ERROR: Registro inválido en JNZ: %s\n", reg1);
-                        return -1;
-                    }
+                if (sscanf(operands, "%63s", label_str) == 1) {
+                    // No necesita registro, usa zero_flag
+                    inst->rd = 0;  // No usado, pero mantener por compatibilidad
                     
                     // Intentar parsear como número
                     char* endptr;
@@ -520,7 +517,7 @@ void print_program(const Program* prog) {
                 printf("R%d", inst->rd);
                 break;
             case OP_JNZ:
-                printf("R%d, %d", inst->rd, inst->label);
+                printf("%d (usa zero_flag)", inst->label);
                 break;
             case OP_HALT:
                 break;

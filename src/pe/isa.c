@@ -39,7 +39,7 @@ void print_instruction(Instruction* inst, uint64_t pc) {
             printf("DEC R%d", inst->rd);
             break;
         case OP_JNZ:
-            printf("JNZ R%d, %d", inst->rd, inst->label);
+            printf("JNZ %d", inst->label);
             break;
         case OP_HALT:
             printf("HALT");
@@ -84,6 +84,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             printf("  [PE%d] FADD: R%d (%.6f) + R%d (%.6f) = %.6f -> R%d\n", 
                    pe_id, inst->ra, val_a, inst->rb, val_b, result, inst->rd);
             reg_write(rf, inst->rd, result);
+            reg_update_zero_flag(rf, result);
             rf->pc++;
             break;
             
@@ -95,6 +96,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             printf("  [PE%d] FMUL: R%d (%.6f) * R%d (%.6f) = %.6f -> R%d\n", 
                    pe_id, inst->ra, val_a, inst->rb, val_b, result, inst->rd);
             reg_write(rf, inst->rd, result);
+            reg_update_zero_flag(rf, result);
             rf->pc++;
             break;
             
@@ -104,6 +106,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             result = val_a + 1.0;
             printf("  [PE%d] INC: R%d (%.6f) + 1 = %.6f\n", pe_id, inst->rd, val_a, result);
             reg_write(rf, inst->rd, result);
+            reg_update_zero_flag(rf, result);
             rf->pc++;
             break;
             
@@ -113,18 +116,18 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             result = val_a - 1.0;
             printf("  [PE%d] DEC: R%d (%.6f) - 1 = %.6f\n", pe_id, inst->rd, val_a, result);
             reg_write(rf, inst->rd, result);
+            reg_update_zero_flag(rf, result);
             rf->pc++;
             break;
             
         case OP_JNZ:
-            // JNZ Rd, label - Saltar si registro != 0
-            val_a = reg_read(rf, inst->rd);
-            if (val_a != 0.0) {
-                printf("  [PE%d] JNZ: R%d (%.6f) != 0, saltando a PC=%d\n", 
-                       pe_id, inst->rd, val_a, inst->label);
+            // JNZ label - Saltar si zero_flag == 0 (última operación != 0)
+            if (rf->zero_flag == 0) {
+                printf("  [PE%d] JNZ: zero_flag=0 (última op != 0), saltando a PC=%d\n", 
+                       pe_id, inst->label);
                 rf->pc = inst->label;
             } else {
-                printf("  [PE%d] JNZ: R%d (%.6f) == 0, no salta\n", pe_id, inst->rd, val_a);
+                printf("  [PE%d] JNZ: zero_flag=1 (última op == 0), no salta\n", pe_id);
                 rf->pc++;
             }
             break;

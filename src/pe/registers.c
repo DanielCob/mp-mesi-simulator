@@ -10,6 +10,9 @@ void reg_init(RegisterFile* rf) {
     
     // Inicializar program counter en 0
     rf->pc = 0;
+    
+    // Inicializar bandera de cero en 1 (ya que todos los registros son 0)
+    rf->zero_flag = 1;
 }
 
 double reg_read(RegisterFile* rf, int reg_id) {
@@ -34,9 +37,15 @@ void reg_write(RegisterFile* rf, int reg_id, double value) {
     rf->regs[reg_id] = value;
 }
 
+void reg_update_zero_flag(RegisterFile* rf, double value) {
+    // Actualizar bandera de cero: 1 si el valor es 0.0, 0 en caso contrario
+    rf->zero_flag = (value == 0.0) ? 1 : 0;
+}
+
 void reg_print(RegisterFile* rf, int pe_id) {
     printf("\n========== PE%d Register File ==========\n", pe_id);
     printf("PC: %lu\n", rf->pc);
+    printf("Zero Flag: %d\n", rf->zero_flag);
     printf("Registers:\n");
     
     for (int i = 0; i < NUM_REGISTERS; i++) {
