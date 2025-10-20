@@ -1,6 +1,6 @@
 #include "handlers.h"
-#include "../memory/memory.h"
-#include "../cache/cache.h"
+#include "memory.h"
+#include "cache.h"
 #include <stdio.h>
 
 void bus_register_handlers(Bus* bus) {

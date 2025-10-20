@@ -3,8 +3,8 @@
 
 #include "config.h"
 #include "bus_stats.h"
-#include "memory/memory.h"
-#include "cache/cache.h"
+#include "memory.h"
+#include "cache.h"
 #include <pthread.h>
 #include <stdbool.h>
 

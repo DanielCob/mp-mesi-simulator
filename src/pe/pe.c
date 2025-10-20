@@ -1,7 +1,7 @@
 #include "pe.h"
-#include "pe/registers.h"
-#include "pe/isa.h"
-#include "pe/loader.h"
+#include "registers.h"
+#include "isa.h"
+#include "loader.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -89,9 +89,6 @@ void* pe_run(void* arg) {
     cache_write(pe->cache, base_addr, val1, pe->id);
     cache_write(pe->cache, base_addr + 4, val2, pe->id);
     
-    // Escalonar ejecución para reducir contención
-    sleep(pe->id);
-    
     printf("\n[PE%d] ========== INICIANDO EJECUCIÓN ==========\n", pe->id);
     
     // Ejecutar programa
@@ -128,7 +125,6 @@ void* pe_run(void* arg) {
     // Liberar memoria del programa
     free_program(prog);
     
-    sleep(1);
     printf("[PE%d] Finished.\n", pe->id);
     return NULL;
 }

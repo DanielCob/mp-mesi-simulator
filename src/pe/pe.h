@@ -1,8 +1,8 @@
 #ifndef PE_H
 #define PE_H
 
-#include "cache/cache.h"
-#include "pe/registers.h"
+#include "cache.h"
+#include "registers.h"
 #include <pthread.h>
 
 typedef struct {

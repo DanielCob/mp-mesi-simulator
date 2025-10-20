@@ -1,5 +1,5 @@
 #include "cache.h"
-#include "bus/bus.h"
+#include "bus.h"
 #include <stdio.h>
 
 void cache_init(Cache* cache) {

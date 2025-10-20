@@ -3,7 +3,7 @@
 
 #include "config.h"
 #include "cache_stats.h"
-#include "mesi/mesi.h"
+#include "mesi.h"
 #include <pthread.h>
 
 // Forward declaration para evitar dependencia circular

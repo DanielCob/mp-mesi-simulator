@@ -1,8 +1,8 @@
 #ifndef ISA_H
 #define ISA_H
 
-#include "pe/registers.h"
-#include "cache/cache.h"
+#include "registers.h"
+#include "cache.h"
 
 /**
  * @brief Códigos de operación de la ISA

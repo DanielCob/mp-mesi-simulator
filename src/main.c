@@ -3,9 +3,9 @@
 #include "cache_stats.h"
 #include "memory_stats.h"
 #include "bus_stats.h"
-#include "pe/pe.h"
-#include "bus/bus.h"
-#include "memory/memory.h"
+#include "pe.h"
+#include "bus.h"
+#include "memory.h"
 
 int main() {
     // Inicializar memoria y crear su thread
