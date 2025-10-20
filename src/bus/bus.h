@@ -1,7 +1,8 @@
 #ifndef BUS_H
 #define BUS_H
 
-#include "include/config.h"
+#include "config.h"
+#include "bus_stats.h"
 #include "memory/memory.h"
 #include "cache/cache.h"
 #include <pthread.h>
@@ -34,6 +35,7 @@ typedef struct Bus {
     BusRequest current_request;    // Solicitud actual
     bool has_request;              // Hay solicitud pendiente
     bool running;                  // El bus está corriendo
+    BusStats stats;                // Estadísticas del bus
 } Bus;
 
 // Funciones públicas

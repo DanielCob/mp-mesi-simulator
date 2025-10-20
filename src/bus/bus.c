@@ -9,6 +9,9 @@ void bus_init(Bus* bus, Cache* caches[], Memory* memory) {
     
     bus->memory = memory;  // Guardar referencia a la memoria
 
+    // Inicializar estadísticas
+    bus_stats_init(&bus->stats);
+
     // Inicializar mutex y variables de condición
     pthread_mutex_init(&bus->mutex, NULL);
     pthread_cond_init(&bus->request_ready, NULL);
@@ -79,6 +82,25 @@ void* bus_thread_func(void* arg) {
         BusRequest* req = &bus->current_request;
         printf("[BUS] Señal %d recibida de PE%d (addr=%d)\n", 
                req->msg, req->src_pe, req->addr);
+        
+        // Registrar estadísticas según el tipo de mensaje
+        switch (req->msg) {
+            case BUS_RD:
+                bus_stats_record_bus_rd(&bus->stats, req->src_pe);
+                bus_stats_record_transfer(&bus->stats, BLOCK_SIZE * sizeof(double));
+                break;
+            case BUS_RDX:
+                bus_stats_record_bus_rdx(&bus->stats, req->src_pe);
+                bus_stats_record_transfer(&bus->stats, BLOCK_SIZE * sizeof(double));
+                break;
+            case BUS_UPGR:
+                bus_stats_record_bus_upgr(&bus->stats, req->src_pe);
+                break;
+            case BUS_WB:
+                bus_stats_record_bus_wb(&bus->stats, req->src_pe);
+                bus_stats_record_transfer(&bus->stats, BLOCK_SIZE * sizeof(double));
+                break;
+        }
         
         pthread_mutex_unlock(&bus->mutex);
         

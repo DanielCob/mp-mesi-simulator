@@ -1,7 +1,8 @@
 #ifndef CACHE_H
 #define CACHE_H
 
-#include "include/config.h"
+#include "config.h"
+#include "cache_stats.h"
 #include "mesi/mesi.h"
 #include <pthread.h>
 
@@ -25,6 +26,8 @@ typedef struct {
     Bus* bus;
     CacheSet sets[SETS];
     pthread_mutex_t mutex;  // Mutex para proteger acceso concurrente
+    CacheStats stats;       // Estadísticas de esta caché
+    int pe_id;              // ID del PE dueño de esta caché
 } Cache;
 
 void cache_init(Cache* cache);

@@ -4,9 +4,13 @@
 
 void cache_init(Cache* cache) {
     cache->bus = NULL;
+    cache->pe_id = -1;  // Se asignará después
     
     // Inicializar mutex
     pthread_mutex_init(&cache->mutex, NULL);
+    
+    // Inicializar estadísticas
+    stats_init(&cache->stats);
     
     for (int i = 0; i < SETS; i++)
         for (int j = 0; j < WAYS; j++) {
@@ -61,6 +65,7 @@ double cache_read(Cache* cache, int addr, int pe_id) {
             if (state == M || state == E || state == S) {
                 double result = set->lines[i].data[offset];  // ← Usa el offset aquí
                 cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
+                stats_record_read_hit(&cache->stats);  // ← Registrar hit
                 printf("[PE%d] READ HIT en set %d (way %d, estado %c, offset %d, LRU actualizado) -> valor=%.2f\n", 
                        pe_id, set_index, i, "MESI"[state], offset, result);
                 pthread_mutex_unlock(&cache->mutex);
@@ -76,6 +81,8 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     }
 
     // MISS: No hay hit válido, necesitamos traer la línea
+    stats_record_read_miss(&cache->stats);  // ← Registrar miss
+    stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);  // ← Tráfico de lectura
     printf("[PE%d] READ MISS en set %d, enviando BUS_RD\n", pe_id, set_index);
 
     // Seleccionar línea víctima usando la política de reemplazo LRU
@@ -133,6 +140,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 // HIT en M: escribir directamente, ya tenemos permisos exclusivos
                 set->lines[i].data[offset] = value;  // ← Usa el offset aquí
                 cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
+                stats_record_write_hit(&cache->stats);  // ← Registrar hit
                 printf("[PE%d] WRITE HIT en set %d (way %d, estado M, offset %d, LRU actualizado) -> escribiendo %.2f\n", 
                        pe_id, set_index, i, offset, value);
                 pthread_mutex_unlock(&cache->mutex);
@@ -141,8 +149,11 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
             else if (state == E) {
                 // HIT en E: escribir y cambiar a M
                 set->lines[i].data[offset] = value;  // ← Usa el offset aquí
+                MESI_State old_state = set->lines[i].state;
                 set->lines[i].state = M;
+                stats_record_mesi_transition(&cache->stats, old_state, M);  // ← E→M
                 cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
+                stats_record_write_hit(&cache->stats);  // ← Registrar hit
                 printf("[PE%d] WRITE HIT en set %d (way %d, estado E->M, offset %d, LRU actualizado) -> escribiendo %.2f\n", 
                        pe_id, set_index, i, offset, value);
                 pthread_mutex_unlock(&cache->mutex);
@@ -150,6 +161,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
             } 
             else if (state == S) {
                 // HIT en S: necesitamos invalidar otras copias con BUS_UPGR
+                stats_record_write_hit(&cache->stats);  // ← Registrar hit
+                cache->stats.bus_upgrades++;  // ← Registrar upgrade
                 printf("[PE%d] WRITE HIT en set %d (way %d, estado S->M, offset %d, enviando BUS_UPGR) -> escribiendo %.2f\n", 
                        pe_id, set_index, i, offset, value);
                 
@@ -160,7 +173,9 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 // Re-lockear para actualizar
                 pthread_mutex_lock(&cache->mutex);
                 set->lines[i].data[offset] = value;  // ← Usa el offset aquí
+                MESI_State old_state = set->lines[i].state;
                 set->lines[i].state = M;
+                stats_record_mesi_transition(&cache->stats, old_state, M);  // ← S→M
                 cache_update_lru(cache, set_index, i);  // ← Actualizar LRU
                 pthread_mutex_unlock(&cache->mutex);
                 return;
@@ -171,6 +186,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     }
 
     // MISS: No hay línea válida con ese tag
+    stats_record_write_miss(&cache->stats);  // ← Registrar miss
+    stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);  // ← Tráfico
     printf("[PE%d] WRITE MISS en set %d, enviando BUS_RDX -> valor a escribir=%.2f\n", 
            pe_id, set_index, value);
 
@@ -246,6 +263,8 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
     // Si la víctima está en M, hacer writeback antes de reemplazar
     if (victim->state == M) {
         int victim_addr = (int)(victim->tag * SETS + set_index);
+        cache->stats.bus_writebacks++;  // ← Registrar writeback
+        stats_record_bus_traffic(&cache->stats, 0, BLOCK_SIZE * sizeof(double));  // ← Tráfico de escritura
         printf("[PE%d] Evicting línea M (addr=%d), haciendo writeback\n", 
                pe_id, victim_addr);
         bus_broadcast(cache->bus, BUS_WB, victim_addr, pe_id);
@@ -279,7 +298,18 @@ void cache_set_state(Cache* cache, int addr, MESI_State new_state) {
     pthread_mutex_lock(&cache->mutex);
     CacheLine* line = cache_get_line(cache, addr);
     if (line) {
+        MESI_State old_state = line->state;
         line->state = new_state;
+        
+        // Registrar transición MESI
+        if (old_state != new_state) {
+            stats_record_mesi_transition(&cache->stats, old_state, new_state);
+        }
+        
+        // Registrar invalidación si transición termina en I
+        if (new_state == I && old_state != I) {
+            stats_record_invalidation_received(&cache->stats);
+        }
     }
     pthread_mutex_unlock(&cache->mutex);
 }

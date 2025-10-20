@@ -1,4 +1,8 @@
-#include "include/config.h"
+#include <stdio.h>
+#include "config.h"
+#include "cache_stats.h"
+#include "memory_stats.h"
+#include "bus_stats.h"
 #include "pe/pe.h"
 #include "bus/bus.h"
 #include "memory/memory.h"
@@ -20,6 +24,7 @@ int main() {
     for (int i = 0; i < NUM_PES; i++) {
         cache_init(&caches[i]);
         caches[i].bus = &bus;
+        caches[i].pe_id = i;  // Asignar ID del PE
     }
 
     // Inicializar bus con referencia a memoria
@@ -50,6 +55,31 @@ int main() {
     // Terminar memoria y esperar su thread
     mem_destroy(&mem);
     pthread_join(mem_thread, NULL);
+
+    // Imprimir estadísticas de cada PE
+    printf("\n");
+    printf("================================================================================\n");
+    printf("                         ESTADÍSTICAS DEL SIMULADOR                             \n");
+    printf("================================================================================\n");
+    
+    for (int i = 0; i < NUM_PES; i++) {
+        stats_print(&caches[i].stats, i);
+    }
+    
+    // Imprimir resumen comparativo
+    CacheStats stats_array[NUM_PES];
+    for (int i = 0; i < NUM_PES; i++) {
+        stats_array[i] = caches[i].stats;
+    }
+    stats_print_summary(stats_array, NUM_PES);
+
+    // Imprimir estadísticas de memoria
+    printf("\n");
+    memory_stats_print(&mem.stats);
+
+    // Imprimir estadísticas del bus
+    printf("\n");
+    bus_stats_print(&bus.stats);
 
     // Limpiar recursos
     for (int i = 0; i < NUM_PES; i++) {

@@ -11,11 +11,13 @@ OBJ_DIR = obj
 
 # Incluir subcarpetas
 INCLUDES = -I$(SRC_DIR) \
+           -I$(SRC_DIR)/include \
            -I$(SRC_DIR)/bus \
            -I$(SRC_DIR)/cache \
            -I$(SRC_DIR)/memory \
            -I$(SRC_DIR)/pe \
-           -I$(SRC_DIR)/mesi
+           -I$(SRC_DIR)/mesi \
+           -I$(SRC_DIR)/stats
 
 # Buscar todos los archivos .c en src/ y subcarpetas
 SRC = $(shell find $(SRC_DIR) -name "*.c")

@@ -7,6 +7,9 @@ void mem_init(Memory* mem) {
         mem->data[i] = 0.0;
     }
     
+    // Inicializar estadísticas
+    memory_stats_init(&mem->stats);
+    
     // Inicializar sincronización
     pthread_mutex_init(&mem->mutex, NULL);
     pthread_cond_init(&mem->request_ready, NULL);
@@ -27,7 +30,7 @@ void mem_destroy(Memory* mem) {
     pthread_cond_destroy(&mem->current_request.done);
 }
 
-void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE]) {
+void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) {
     // Verificar alineamiento
     if (!IS_ALIGNED(addr)) {
         fprintf(stderr, "[MEMORY ERROR] Read block address %d is not aligned\n", addr);
@@ -44,6 +47,7 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE]) {
     // Preparar solicitud de lectura de bloque
     mem->current_request.op = MEM_OP_READ_BLOCK;
     mem->current_request.addr = addr;
+    mem->current_request.pe_id = pe_id;
     mem->current_request.processed = false;
     mem->has_request = true;
     
@@ -63,7 +67,7 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE]) {
     pthread_mutex_unlock(&mem->mutex);
 }
 
-void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE]) {
+void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int pe_id) {
     // Verificar alineamiento
     if (!IS_ALIGNED(addr)) {
         fprintf(stderr, "[MEMORY ERROR] Write block address %d is not aligned\n", addr);
@@ -80,6 +84,7 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE]) {
     // Preparar solicitud de escritura de bloque
     mem->current_request.op = MEM_OP_WRITE_BLOCK;
     mem->current_request.addr = addr;
+    mem->current_request.pe_id = pe_id;
     for (int i = 0; i < BLOCK_SIZE; i++) {
         mem->current_request.block[i] = block[i];
     }
@@ -121,15 +126,21 @@ void* mem_thread_func(void* arg) {
         
         // Ejecutar operación (fuera del lock)
         if (req->op == MEM_OP_READ_BLOCK) {
-            printf("[MEMORY] READ_BLOCK addr=%d (reading %d doubles)\n", req->addr, BLOCK_SIZE);
+            printf("[MEMORY] READ_BLOCK addr=%d (reading %d doubles) from PE%d\n", 
+                   req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 req->block[i] = mem->data[req->addr + i];
             }
+            // Registrar estadística
+            memory_stats_record_read(&mem->stats, req->pe_id, BLOCK_SIZE * sizeof(double));
         } else if (req->op == MEM_OP_WRITE_BLOCK) {
-            printf("[MEMORY] WRITE_BLOCK addr=%d (writing %d doubles)\n", req->addr, BLOCK_SIZE);
+            printf("[MEMORY] WRITE_BLOCK addr=%d (writing %d doubles) from PE%d\n", 
+                   req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 mem->data[req->addr + i] = req->block[i];
             }
+            // Registrar estadística
+            memory_stats_record_write(&mem->stats, req->pe_id, BLOCK_SIZE * sizeof(double));
         }
         
         pthread_mutex_lock(&mem->mutex);
