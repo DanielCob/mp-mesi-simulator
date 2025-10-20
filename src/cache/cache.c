@@ -350,54 +350,29 @@ void cache_set_block(Cache* cache, int addr, const double block[BLOCK_SIZE]) {
 void cache_flush(Cache* cache, int pe_id) {
     printf("[PE%d] Flushing all modified cache lines...\n", pe_id);
     
-    // Guardar información de las líneas a hacer flush
-    // (necesitamos esto porque liberaremos el mutex antes de llamar al bus)
-    typedef struct {
-        int block_base;
-        int set_idx;
-        int way;
-        unsigned long tag;
-    } FlushInfo;
-    
-    FlushInfo flush_list[SETS * WAYS];
-    int flush_count = 0;
+    // Recolectar direcciones de bloques modificados (liberamos mutex antes del bus)
+    int modified_blocks[SETS * WAYS];
+    int count = 0;
     
     pthread_mutex_lock(&cache->mutex);
     
-    // Primera pasada: recolectar líneas modificadas
-    for (int set_idx = 0; set_idx < SETS; set_idx++) {
-        CacheSet* set = &cache->sets[set_idx];
-        
+    for (int set = 0; set < SETS; set++) {
         for (int way = 0; way < WAYS; way++) {
-            CacheLine* line = &set->lines[way];
+            CacheLine* line = &cache->sets[set].lines[way];
             
-            // Si la línea es válida y está en estado Modified
             if (line->valid && line->state == M) {
-                // Calcular dirección base del bloque desde tag y set
-                // Formula inversa de: tag = block_base / SETS, set = block_base % SETS
-                int block_base = line->tag * SETS + set_idx;
-                
-                flush_list[flush_count].block_base = block_base;
-                flush_list[flush_count].set_idx = set_idx;
-                flush_list[flush_count].way = way;
-                flush_list[flush_count].tag = line->tag;
-                flush_count++;
+                // Calcular dirección: tag * SETS + set
+                modified_blocks[count++] = line->tag * SETS + set;
             }
         }
     }
     
     pthread_mutex_unlock(&cache->mutex);
     
-    // Segunda pasada: hacer writeback a través del bus (SIN mutex)
-    for (int i = 0; i < flush_count; i++) {
-        printf("[PE%d]   Writeback: set=%d way=%d tag=%lu addr=%d state=M\n",
-               pe_id, flush_list[i].set_idx, flush_list[i].way, 
-               flush_list[i].tag, flush_list[i].block_base);
-        
-        // Enviar señal BUS_WB para hacer writeback a través del bus
-        // Esto respeta la arquitectura definida
-        bus_broadcast(cache->bus, BUS_WB, flush_list[i].block_base, pe_id);
+    // Hacer writeback de cada bloque modificado a través del bus
+    for (int i = 0; i < count; i++) {
+        bus_broadcast(cache->bus, BUS_WB, modified_blocks[i], pe_id);
     }
     
-    printf("[PE%d] Flush complete: %d line(s) written back\n", pe_id, flush_count);
+    printf("[PE%d] Flush complete: %d line(s) written back\n", pe_id, count);
 }
