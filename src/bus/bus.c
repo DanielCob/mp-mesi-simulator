@@ -3,30 +3,28 @@
 #include <stdio.h>
 #include <pthread.h>
 
+// INICIALIZACIÓN Y LIMPIEZA
+
 void bus_init(Bus* bus, Cache* caches[], Memory* memory) {
-    for (int i = 0; i < NUM_PES; i++)
+    for (int i = 0; i < NUM_PES; i++) {
         bus->caches[i] = caches[i];
+    }
     
     bus->memory = memory;
-
-    // Inicializar estadísticas
     bus_stats_init(&bus->stats);
 
-    // Inicializar mutex y variables de condición
     pthread_mutex_init(&bus->mutex, NULL);
     pthread_cond_init(&bus->request_ready, NULL);
     
-    // Inicializar solicitudes por PE
     for (int i = 0; i < NUM_PES; i++) {
         bus->requests[i].has_request = false;
         bus->requests[i].processed = false;
         pthread_cond_init(&bus->requests[i].done, NULL);
     }
     
-    bus->next_pe = 0;  // Comenzar con PE0
+    bus->next_pe = 0;
     bus->running = true;
 
-    // Registrar los handlers
     bus_register_handlers(bus);
 
     printf("[BUS] Initialized with Round-Robin scheduling.\n");
@@ -34,15 +32,16 @@ void bus_init(Bus* bus, Cache* caches[], Memory* memory) {
 
 void bus_destroy(Bus* bus) {
     bus->running = false;
-    pthread_cond_broadcast(&bus->request_ready);  // Despertar thread del bus
+    pthread_cond_broadcast(&bus->request_ready);
     pthread_mutex_destroy(&bus->mutex);
     pthread_cond_destroy(&bus->request_ready);
     
-    // Destruir condition variables de cada PE
     for (int i = 0; i < NUM_PES; i++) {
         pthread_cond_destroy(&bus->requests[i].done);
     }
 }
+
+// FUNCIONES DE BROADCAST
 
 void bus_broadcast(Bus* bus, BusMsg msg, int addr, int src_pe) {
     bus_broadcast_with_callback(bus, msg, addr, src_pe, NULL, NULL);
@@ -66,19 +65,18 @@ void bus_broadcast_with_callback(Bus* bus, BusMsg msg, int addr, int src_pe,
     bus->requests[src_pe].callback = callback;
     bus->requests[src_pe].callback_context = callback_context;
     
-    // Señalar que hay una nueva solicitud
     pthread_cond_signal(&bus->request_ready);
     
-    // Esperar a que se procese esta solicitud
+    // Esperar a que se procese esta solicitud (bloqueante)
     while (!bus->requests[src_pe].processed) {
         pthread_cond_wait(&bus->requests[src_pe].done, &bus->mutex);
     }
     
-    // Limpiar la solicitud
     bus->requests[src_pe].has_request = false;
-    
     pthread_mutex_unlock(&bus->mutex);
 }
+
+// THREAD DEL BUS (Round-Robin)
 
 void* bus_thread_func(void* arg) {
     Bus* bus = (Bus*)arg;
@@ -87,10 +85,9 @@ void* bus_thread_func(void* arg) {
     while (bus->running) {
         pthread_mutex_lock(&bus->mutex);
         
-        // Esperar hasta que haya al menos una solicitud pendiente
+        // Esperar hasta que haya solicitudes pendientes
         bool has_pending = false;
         while (bus->running) {
-            // Revisar si hay solicitudes pendientes en algún PE
             has_pending = false;
             for (int i = 0; i < NUM_PES; i++) {
                 if (bus->requests[i].has_request && !bus->requests[i].processed) {
@@ -117,7 +114,7 @@ void* bus_thread_func(void* arg) {
             if (bus->requests[pe_idx].has_request && !bus->requests[pe_idx].processed) {
                 req = &bus->requests[pe_idx];
                 selected_pe = pe_idx;
-                bus->next_pe = (pe_idx + 1) % NUM_PES;  // Siguiente PE en round-robin
+                bus->next_pe = (pe_idx + 1) % NUM_PES;
                 break;
             }
         }
@@ -125,7 +122,7 @@ void* bus_thread_func(void* arg) {
         printf("[BUS] [RR] PE%d: Señal %d (addr=%d)\n", 
                selected_pe, req->msg, req->addr);
         
-        // Registrar estadísticas según el tipo de mensaje
+        // Registrar estadísticas
         switch (req->msg) {
             case BUS_RD:
                 bus_stats_record_bus_rd(&bus->stats, req->src_pe);
@@ -144,15 +141,14 @@ void* bus_thread_func(void* arg) {
                 break;
         }
         
-        // Llamar al handler (fuera del lock para evitar deadlock)
+        // Ejecutar handler
         if (bus->handlers[req->msg]) {
             bus->handlers[req->msg](bus, req->addr, req->src_pe);
         } else {
             printf("[BUS] No hay handler definido para la señal %d\n", req->msg);
         }
         
-        // Ejecutar callback si fue proporcionado (OPCIÓN B)
-        // El callback se ejecuta después del handler, antes de señalizar al PE
+        // Ejecutar callback si fue proporcionado (después del handler)
         if (req->callback) {
             printf("[BUS] Ejecutando callback para PE%d\n", selected_pe);
             req->callback(req->callback_context);

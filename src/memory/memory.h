@@ -6,41 +6,53 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-// Tipos de operaciones de memoria
+// TIPOS DE OPERACIONES DE MEMORIA
+
 typedef enum { 
-    MEM_OP_READ_BLOCK,  // Lee un bloque completo (BLOCK_SIZE doubles)
-    MEM_OP_WRITE_BLOCK  // Escribe un bloque completo (BLOCK_SIZE doubles)
+    MEM_OP_READ_BLOCK,   // Lee un bloque completo (BLOCK_SIZE doubles)
+    MEM_OP_WRITE_BLOCK   // Escribe un bloque completo (BLOCK_SIZE doubles)
 } MemOp;
 
-// Estructura de solicitud de memoria
+// ESTRUCTURAS
+
+/**
+ * Solicitud de memoria
+ * Encapsula una operación de lectura/escritura de bloque
+ */
 typedef struct {
     MemOp op;
-    int addr;                    // Dirección base del bloque
-    double block[BLOCK_SIZE];    // Para operaciones de bloque
-    int pe_id;                   // ID del PE que hace la solicitud
-    bool processed;
-    pthread_cond_t done;
+    int addr;                     // Dirección base del bloque (debe estar alineada)
+    double block[BLOCK_SIZE];     // Buffer de datos del bloque
+    int pe_id;                    // ID del PE que hace la solicitud
+    bool processed;               // Flag de procesamiento
+    pthread_cond_t done;          // Condición para sincronización
 } MemRequest;
 
-// Estructura de la memoria
+/**
+ * Memoria principal compartida
+ * Thread-safe con un thread dedicado para procesar solicitudes
+ */
 typedef struct {
-    double data[MEM_SIZE];
-    pthread_mutex_t mutex;
-    pthread_cond_t request_ready;
-    MemRequest current_request;
-    bool has_request;
-    bool running;
-    MemoryStats stats;  // Estadísticas de accesos a memoria
+    double data[MEM_SIZE];            // Arreglo de datos
+    pthread_mutex_t mutex;            // Mutex para sincronización
+    pthread_cond_t request_ready;     // Señal de solicitud pendiente
+    MemRequest current_request;       // Solicitud actual
+    bool has_request;                 // Flag de solicitud pendiente
+    bool running;                     // Flag de ejecución del thread
+    MemoryStats stats;                // Estadísticas de accesos
 } Memory;
 
-// Funciones públicas
+// FUNCIONES PÚBLICAS
+
+// Inicialización y limpieza
 void mem_init(Memory* mem);
 void mem_destroy(Memory* mem);
 
-// Funciones de bloque completo (para uso del bus)
+// Operaciones de bloque (usadas por el bus)
 void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id);
 void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int pe_id);
 
-void* mem_thread_func(void* arg);  // Función del thread de memoria
+// Thread de memoria
+void* mem_thread_func(void* arg);
 
 #endif

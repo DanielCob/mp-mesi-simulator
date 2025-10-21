@@ -176,7 +176,176 @@ Cada caché implementa coherencia de caché con los siguientes estados:
 
 ---
 
-## 12. Referencias
+---
+
+## 13. Arquitectura de la solución implementada
+
+### 13.1 Organización del código
+
+El proyecto está organizado de la siguiente manera:
+
+```
+MESI-MultiProcessor-Model/
+├── src/
+│   ├── bus/              # Sistema de bus (arbitraje, handlers, callbacks)
+│   │   ├── bus.c/h       # Gestión del bus con Round-Robin
+│   │   └── handlers.c/h  # Handlers MESI (BUS_RD, BUS_RDX, BUS_UPGR, BUS_WB)
+│   ├── cache/            # Sistema de caché con coherencia MESI
+│   │   └── cache.c/h     # Operaciones read/write, política LRU, callbacks
+│   ├── pe/               # Processing Elements
+│   │   ├── pe.c/h        # Gestión de threads de PE
+│   │   ├── isa.c/h       # Ejecución de instrucciones
+│   │   ├── registers.c/h # Banco de registros
+│   │   └── loader.c/h    # Cargador de programas (.asm)
+│   ├── memory/           # Memoria principal compartida
+│   │   └── memory.c/h    # Operaciones de lectura/escritura de bloques
+│   ├── mesi/             # Protocolo MESI
+│   │   └── mesi.c/h      # Definiciones de estados y transiciones
+│   ├── stats/            # Sistema de estadísticas
+│   │   ├── cache_stats.c/h
+│   │   ├── bus_stats.c/h
+│   │   └── memory_stats.c/h
+│   ├── dotprod/          # Problema del producto punto
+│   │   └── dotprod.c/h   # Inicialización y verificación
+│   ├── include/          # Configuración global
+│   │   └── config.h      # Constantes del sistema
+│   └── main.c            # Punto de entrada
+├── asm/                  # Programas assembly por PE
+│   ├── dotprod_pe0.asm   # PE0: elementos [0-3]
+│   ├── dotprod_pe1.asm   # PE1: elementos [4-7]
+│   ├── dotprod_pe2.asm   # PE2: elementos [8-11]
+│   └── dotprod_pe3.asm   # PE3: elementos [12-15] + reducción
+└── makefile              # Compilación automatizada
+```
+
+### 13.2 Componentes principales
+
+#### **1. Processing Elements (PE)**
+- **Arquitectura:** Cada PE es un thread independiente con:
+  - 8 registros de 64 bits (R0-R7)
+  - Program Counter (PC)
+  - Zero flag
+  - Caché privada de 2-way set associative
+  
+- **Scheduling:** Se utiliza `sched_yield()` después de cada instrucción para simular el tiempo de ejecución y garantizar un scheduling justo entre PEs.
+
+#### **2. Sistema de Caché**
+- **Configuración:**
+  - 2-way set associative
+  - 16 sets (índice de 4 bits)
+  - Bloques de 4 doubles (32 bytes)
+  - Política LRU para reemplazo
+
+- **Operaciones:**
+  - **READ:** Busca en caché → Hit devuelve dato → Miss envía BUS_RD
+  - **WRITE:** 
+    - Hit en M: escribe directamente
+    - Hit en E: escribe y pasa a M
+    - Hit en S: envía BUS_UPGR, invalida copias, pasa a M
+    - Miss: envía BUS_RDX con callback para escritura atómica
+
+#### **3. Sistema de Bus**
+- **Arbitraje:** Round-Robin entre los 4 PEs
+- **Thread dedicado:** Procesa solicitudes serializadas
+- **Mecanismo de callback:** Permite ejecutar operaciones atómicas después de los handlers
+- **Señales soportadas:**
+  - `BUS_RD`: Lectura compartida
+  - `BUS_RDX`: Lectura exclusiva para escritura
+  - `BUS_UPGR`: Upgrade de S a M
+  - `BUS_WB`: Writeback a memoria
+
+#### **4. Protocolo MESI**
+Transiciones de estados implementadas:
+
+```
+┌─────────┐
+│ INVALID │
+└─────────┘
+    ↑  ↓
+    │  │ BUS_RD (único lector) → E
+    │  │ BUS_RD (compartido)   → S
+    │  │ BUS_RDX               → M
+    │  │
+┌─────────┐    write    ┌──────────┐
+│EXCLUSIVE│ ───────────→ │ MODIFIED │
+└─────────┘              └──────────┘
+    │                         │
+    │ BUS_RD (otro PE)        │ BUS_RD/BUS_RDX
+    ↓                         ↓
+┌─────────┐    write    ┌──────────┐
+│ SHARED  │ ───────────→ │ MODIFIED │
+└─────────┘ BUS_UPGR    └──────────┘
+```
+
+### 13.3 Solución al race condition de BUS_RDX
+
+**Problema original:** En WRITE MISS, después de que el handler BUS_RDX trae el bloque, el PE debe escribir su valor. Había una ventana de tiempo donde otro PE podía leer el bloque antes de que se escribiera el valor, causando inconsistencias.
+
+**Solución implementada (Callback Architecture):**
+
+1. **PE prepara contexto de escritura:**
+   ```c
+   WriteCallbackContext ctx = {
+       .victim = victim,
+       .offset = offset,
+       .value = value,
+       ...
+   };
+   ```
+
+2. **PE desbloquea su caché y llama al bus:**
+   ```c
+   pthread_mutex_unlock(&cache->mutex);
+   bus_broadcast_with_callback(bus, BUS_RDX, addr, pe_id, 
+                                write_callback, &ctx);
+   ```
+
+3. **Bus thread ejecuta en orden:**
+   - **Handler:** Trae bloque de memoria/otra caché
+   - **Callback:** Escribe el valor y marca estado M
+   - **Señal:** Notifica al PE que completó
+
+4. **Ventajas:**
+   - **Atomicidad:** La escritura ocurre en el contexto del bus thread (serializado)
+   - **Sin deadlock:** PE libera su mutex antes de llamar al bus
+   - **Sin race condition:** Callback ejecuta antes de señalizar al PE
+
+### 13.4 Estadísticas recolectadas
+
+Por cada PE:
+- Read hits/misses
+- Write hits/misses
+- Hit rate / Miss rate
+- Transiciones de estado MESI (M→S, E→M, S→I, etc.)
+- Invalidaciones recibidas/enviadas
+- Tráfico del bus (bytes leídos/escritos)
+- Operaciones de BusRd, BusRdX, BusUpgr, Writebacks
+
+Globales:
+- Tráfico total del bus
+- Accesos a memoria principal
+- Uso del bus por PE
+
+### 13.5 Compilación y ejecución
+
+```bash
+# Compilar
+make clean && make
+
+# Ejecutar producto punto
+./mp_mesi dotprod
+
+# Ejecutar tests
+./tests/verify.sh
+```
+
+**Resultado esperado:** 
+- Producto punto: 136.00
+- Tasa de éxito: 100% (con sched_yield)
+
+---
+
+## 14. Referencias
 
 1. Hennessy, J. L., & Patterson, D. A. *Computer Architecture: A Quantitative Approach.* Elsevier, 2017.  
 2. Wikipedia: [Producto escalar](https://es.wikipedia.org/wiki/Producto_escalar)  

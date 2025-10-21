@@ -3,7 +3,6 @@
 
 #include "config.h"
 #include "cache_stats.h"
-#include "mesi.h"
 #include <pthread.h>
 
 // Forward declaration para evitar dependencia circular
@@ -15,7 +14,7 @@ typedef struct {
     MESI_State state;
     double data[BLOCK_SIZE];
     int valid;
-    int lru_bit;  // Bit LRU: 1 = recientemente usado, 0 = menos recientemente usado
+    int lru_bit;
 } CacheLine;
 
 typedef struct {
@@ -31,11 +30,10 @@ typedef struct {
 } Cache;
 
 void cache_init(Cache* cache);
-void cache_destroy(Cache* cache);  // Nueva función para limpiar recursos
+void cache_destroy(Cache* cache);
 
-// Funciones que requieren alineamiento (addr debe ser múltiplo de BLOCK_SIZE)
-double cache_read(Cache* cache, int addr, int pe_id);   // Requiere IS_ALIGNED(addr)
-void cache_write(Cache* cache, int addr, double value, int pe_id);  // Requiere IS_ALIGNED(addr)
+double cache_read(Cache* cache, int addr, int pe_id);
+void cache_write(Cache* cache, int addr, double value, int pe_id);
 
 // Política de reemplazo
 CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id);

@@ -38,7 +38,7 @@ typedef struct Bus {
     Memory* memory;              // Referencia a la memoria
     BusHandler handlers[4];      // Dispatch table
     pthread_mutex_t mutex;       // Protección del bus
-    pthread_cond_t request_ready;  // Señal de nueva solicitud
+    pthread_cond_t request_ready; // Señal de nueva solicitud
     PERequest requests[NUM_PES]; // Una solicitud por PE
     int next_pe;                 // Siguiente PE a atender (round-robin)
     bool running;                // El bus está corriendo

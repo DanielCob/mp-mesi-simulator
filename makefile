@@ -16,7 +16,6 @@ INCLUDES = -I$(SRC_DIR) \
            -I$(SRC_DIR)/cache \
            -I$(SRC_DIR)/memory \
            -I$(SRC_DIR)/pe \
-           -I$(SRC_DIR)/mesi \
            -I$(SRC_DIR)/stats \
            -I$(SRC_DIR)/dotprod
 

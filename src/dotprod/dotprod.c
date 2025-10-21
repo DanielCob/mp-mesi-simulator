@@ -1,6 +1,5 @@
 #include "dotprod.h"
 #include "config.h"
-#include "mesi/mesi.h"
 #include <stdio.h>
 #include <pthread.h>
 
