@@ -82,7 +82,7 @@ void* pe_run(void* arg) {
     // Ejecutar programa
     pe->rf.pc = 0;
     int running = 1;
-    int max_iterations = 100;
+    int max_iterations = 1000;  // Aumentado para permitir programas con loops
     int iterations = 0;
     
     while (running && iterations < max_iterations) {

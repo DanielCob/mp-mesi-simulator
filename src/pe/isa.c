@@ -1,6 +1,7 @@
 #include "isa.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <sched.h>  // Para sched_yield()
 
 const char* opcode_to_str(OpCode op) {
     switch (op) {
@@ -144,6 +145,10 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             printf("  [PE%d] ERROR: OpCode desconocido %d\n", pe_id, inst->op);
             return 0;
     }
+    
+    // Ceder el procesador para simular el tiempo de ejecución de la instrucción
+    // y permitir que otros PEs ejecuten (scheduling justo)
+    sched_yield();
     
     return 1;  // Continuar ejecución
 }
