@@ -51,13 +51,21 @@ Cada PE debe soportar las siguientes instrucciones de punto flotante (64 bits):
 
 | Instrucción | Descripción | Ejemplo |
 |--------------|-------------|----------|
-| `LOAD REG, [dir]` | Carga desde memoria a registro | `LOAD R5, [R0]` |
-| `STORE REG, [dir]` | Escribe de registro a memoria | `STORE R4, [R2]` |
+| `MOV REG, imm` | Carga valor inmediato a registro | `MOV R1, 10.0` |
+| `LOAD REG, [dir]` | Carga desde memoria a registro (directo) | `LOAD R5, [100]` |
+| `LOAD REG, [REG]` | Carga desde memoria a registro (indirecto) | `LOAD R5, [R0]` |
+| `STORE REG, [dir]` | Escribe de registro a memoria (directo) | `STORE R4, [200]` |
+| `STORE REG, [REG]` | Escribe de registro a memoria (indirecto) | `STORE R4, [R2]` |
 | `FMUL Rd, Ra, Rb` | Multiplicación flotante | `FMUL R7, R5, R6` |
 | `FADD Rd, Ra, Rb` | Suma flotante | `FADD R4, R4, R7` |
 | `INC REG` | Incrementa el registro | `INC R0` |
 | `DEC REG` | Decrementa el registro | `DEC R3` |
 | `JNZ label` | Salta si el registro ≠ 0 | `JNZ LOOP` |
+
+**Nota:** El ISA ha sido mejorado con:
+- **MOV**: Carga de valores inmediatos sin acceso a memoria
+- **Addressing modes**: Directo `[addr]` e indirecto `[Rx]`
+- **Sintaxis estandarizada**: Corchetes obligatorios para operaciones de memoria
 
 ---
 
@@ -65,7 +73,7 @@ Cada PE debe soportar las siguientes instrucciones de punto flotante (64 bits):
 
 Dado dos vectores `A[]` y `B[]` de tamaño `N` (tipo `double`):
 
-- Cada PE procesa un segmento de tamaño `N/4`.
+- Cada PE procesa un segmento de tamaño `N/NUM_PES`.
 - Se almacenan los resultados parciales en un arreglo auxiliar.
 - Un PE final realiza la suma final de los productos parciales.
 
@@ -74,13 +82,24 @@ Dado dos vectores `A[]` y `B[]` de tamaño `N` (tipo `double`):
 A = [a0, a1, ..., aN]
 B = [b0, b1, ..., bN]
 
-PE0 → segmento A0..A(N/4)
-PE1 → segmento A(N/4)..A(N/2)
-PE2 → segmento A(N/2)..A(3N/4)
-PE3 → segmento A(3N/4)..A(N)
+PE0 → segmento A[0..N/4)
+PE1 → segmento A[N/4..N/2)
+PE2 → segmento A[N/2..3N/4)
+PE3 → segmento A[3N/4..N) + REDUCCIÓN
 
 
-Cada PE calcula su producto parcial, y uno de ellos combina los resultados.
+Cada PE calcula su producto parcial, y PE3 combina los resultados.
+
+### Sistema parametrizable
+
+El tamaño del vector es **completamente configurable** mediante `VECTOR_SIZE` en `config.h`.  
+Los programas assembly se generan automáticamente con:
+
+```bash
+python3 scripts/generate_asm.py
+```
+
+Ver [PARAMETRIC_VECTORS.md](PARAMETRIC_VECTORS.md) para detalles completos.
 
 ---
 
@@ -328,19 +347,37 @@ Globales:
 
 ### 13.5 Compilación y ejecución
 
+#### Configuración estándar (VECTOR_SIZE=16):
+
 ```bash
 # Compilar
 make clean && make
 
 # Ejecutar producto punto
-./mp_mesi dotprod
+./mp_mesi
 
 # Ejecutar tests
 ./tests/verify.sh
 ```
 
+#### Cambiar el tamaño del vector:
+
+```bash
+# 1. Editar src/include/config.h
+#    Cambiar: #define VECTOR_SIZE 32
+
+# 2. Regenerar programas assembly
+python3 scripts/generate_asm.py
+
+# 3. Compilar y ejecutar
+make clean && make
+./mp_mesi
+```
+
 **Resultado esperado:** 
-- Producto punto: 136.00
+- VECTOR_SIZE=16: 136.00 ✓
+- VECTOR_SIZE=32: 528.00 ✓
+- VECTOR_SIZE=64: 2080.00 ✓
 - Tasa de éxito: 100% (con sched_yield)
 
 ---

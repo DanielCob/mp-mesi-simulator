@@ -1,57 +1,53 @@
 # ============================================================================
-# Producto Punto Paralelo - PE0
+# Producto Punto Paralelo - PE0 (GENERADO AUTOMÁTICAMENTE CON LOOP)
 # ============================================================================
-# Segmento: A[0-3] · B[0-3]
-# Vector A: direcciones 0-15 (16 elementos)
-# Vector B: direcciones 100-115 (16 elementos)
-# Resultado parcial: dirección 200
+# Segmento: elementos [0 to 3]
+# Configuración: VECTOR_SIZE=16, SEGMENT_SIZE=4
 # ============================================================================
 
-# Inicializar acumulador
-# R2 ya está inicializado en 0.0 al inicio del programa
+# ============================================================================
+# Inicialización
+# ============================================================================
+MOV R0, 0.0         # R0 = acumulador (resultado parcial)
+MOV R1, 0.0         # R1 = índice de elemento actual
+MOV R2, 100.0       # R2 = base de vector B
+MOV R3, 4.0        # R3 = contador del loop (SEGMENT_SIZE)
 
 # ============================================================================
-# Calcular A[0] * B[0]
+# LOOP: Procesar SEGMENT_SIZE elementos
 # ============================================================================
-LOAD R4, [0]      # R4 = A[0]
-LOAD R6, [100]    # R6 = B[0]
-FMUL R7, R4, R6   # R7 = A[0] * B[0]
-FADD R2, R2, R7   # R2 += A[0] * B[0]
+LOOP_START:
+# Cargar A[i] usando addressing indirecto
+LOAD R4, [R1]       # R4 = A[i]
+
+# Calcular dirección de B[i] = VECTOR_B_BASE + i
+FADD R5, R2, R1     # R5 = VECTOR_B_BASE + i
+LOAD R6, [R5]       # R6 = B[i]
+
+# Multiplicar A[i] * B[i]
+FMUL R7, R4, R6     # R7 = A[i] * B[i]
+
+# Acumular resultado
+FADD R0, R0, R7     # acum += A[i] * B[i]
+
+# Incrementar índice
+INC R1              # i++
+
+# Decrementar contador y verificar si continuar
+DEC R3              # contador--
+JNZ LOOP_START      # Si R3 != 0, repetir loop
 
 # ============================================================================
-# Calcular A[1] * B[1]
+# Guardar resultado parcial
 # ============================================================================
-LOAD R4, [1]      # R4 = A[1]
-LOAD R6, [101]    # R6 = B[1]
-FMUL R7, R4, R6   # R7 = A[1] * B[1]
-FADD R2, R2, R7   # R2 += A[1] * B[1]
+MOV R5, 200.0       # RESULTS_BASE + 0*BLOCK_SIZE
+STORE R0, [R5]      # Guardar resultado parcial de PE0
 
 # ============================================================================
-# Calcular A[2] * B[2]
+# Señalizar finalización (barrier)
 # ============================================================================
-LOAD R4, [2]      # R4 = A[2]
-LOAD R6, [102]    # R6 = B[2]
-FMUL R7, R4, R6   # R7 = A[2] * B[2]
-FADD R2, R2, R7   # R2 += A[2] * B[2]
+MOV R6, 1.0         # Flag value
+MOV R7, 220.0       # FLAGS_BASE + 0*BLOCK_SIZE
+STORE R6, [R7]      # Flag PE0 = 1.0
 
-# ============================================================================
-# Calcular A[3] * B[3]
-# ============================================================================
-LOAD R4, [3]      # R4 = A[3]
-LOAD R6, [103]    # R6 = B[3]
-FMUL R7, R4, R6   # R7 = A[3] * B[3]
-FADD R2, R2, R7   # R2 += A[3] * B[3]
-
-# ============================================================================
-# Guardar resultado parcial en memoria compartida
-# ============================================================================
-STORE R2, [200]   # Guardar producto parcial de PE0 en dirección 200
-
-# ============================================================================
-# Marcar flag de sincronización (barrier)
-# ============================================================================
-MOV R3, 1.0       # R3 = 1.0 (valor inmediato)
-STORE R3, [220]   # Flag PE0 = 1.0 (señala que PE0 terminó)
-
-# Fin del programa
 HALT

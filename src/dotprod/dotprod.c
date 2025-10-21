@@ -7,47 +7,53 @@ void dotprod_init_data(Memory* mem) {
     pthread_mutex_lock(&mem->mutex);
     
     printf("\n[DotProd] Initializing test data...\n");
+    printf("[DotProd] Configuration: VECTOR_SIZE=%d, NUM_PES=%d, SEGMENT_SIZE=%d\n", 
+           VECTOR_SIZE, NUM_PES, SEGMENT_SIZE);
     
-    // Vector A [0-15]: valores 1.0 a 16.0
-    printf("[DotProd] Loading Vector A at addresses 0-15:\n  A = [");
-    for (int i = 0; i < 16; i++) {
-        mem->data[i] = (double)(i + 1);
-        printf("%.0f", mem->data[i]);
-        if (i < 15) printf(", ");
+    // Vector A: valores 1.0 a VECTOR_SIZE
+    printf("[DotProd] Loading Vector A at addresses %d-%d:\n  A = [", 
+           VECTOR_A_BASE, VECTOR_A_BASE + VECTOR_SIZE - 1);
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        mem->data[VECTOR_A_BASE + i] = (double)(i + 1);
+        printf("%.0f", mem->data[VECTOR_A_BASE + i]);
+        if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
-    // Vector B [100-115]: todos valores 1.0
-    printf("[DotProd] Loading Vector B at addresses 100-115:\n  B = [");
-    for (int i = 0; i < 16; i++) {
-        mem->data[100 + i] = 1.0;
-        printf("%.0f", mem->data[100 + i]);
-        if (i < 15) printf(", ");
+    // Vector B: todos valores 1.0
+    printf("[DotProd] Loading Vector B at addresses %d-%d:\n  B = [",
+           VECTOR_B_BASE, VECTOR_B_BASE + VECTOR_SIZE - 1);
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        mem->data[VECTOR_B_BASE + i] = 1.0;
+        printf("%.0f", mem->data[VECTOR_B_BASE + i]);
+        if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
-    // Inicializar área de resultados en 0
-    // IMPORTANTE: Usar bloques separados para evitar race conditions en writeback
-    // PE0→200, PE1→204, PE2→208, PE3→212, Final→216
+    // Inicializar área de resultados parciales (bloques separados)
     printf("[DotProd] Initializing result areas (separate cache blocks)\n");
-    mem->data[200] = 0.0;  // PE0 partial (block 200-203)
-    mem->data[204] = 0.0;  // PE1 partial (block 204-207)
-    mem->data[208] = 0.0;  // PE2 partial (block 208-211)
-    mem->data[212] = 0.0;  // PE3 partial (block 212-215)
-    mem->data[216] = 0.0;  // Final result (block 216-219)
+    for (int pe = 0; pe < NUM_PES; pe++) {
+        mem->data[RESULTS_BASE + pe * BLOCK_SIZE] = 0.0;
+        printf("  PE%d partial result → addr %d (block %d-%d)\n", 
+               pe, RESULTS_BASE + pe * BLOCK_SIZE,
+               RESULTS_BASE + pe * BLOCK_SIZE,
+               RESULTS_BASE + pe * BLOCK_SIZE + BLOCK_SIZE - 1);
+    }
+    mem->data[FINAL_RESULT_ADDR] = 0.0;  // Final result
+    printf("  Final result → addr %d\n", FINAL_RESULT_ADDR);
     
-    // Flags de sincronización para barrier (uno por PE en bloques separados)
-    // Cada PE escribe 1.0 cuando termina su cálculo individual
-    // PE3 espera a que todos los flags sean 1.0 antes de hacer la suma final
+    // Flags de sincronización para barrier (bloques separados)
     printf("[DotProd] Initializing synchronization flags in separate blocks\n");
-    mem->data[220] = 0.0;  // Flag PE0 (block 220-223)
-    mem->data[224] = 0.0;  // Flag PE1 (block 224-227) - bloque separado
-    mem->data[228] = 0.0;  // Flag PE2 (block 228-231) - bloque separado
-    mem->data[232] = -3.0; // Constante -3.0 para comparación (block 232-235)
+    for (int pe = 0; pe < NUM_PES - 1; pe++) {  // Solo PE0-PE2 necesitan flags
+        mem->data[FLAGS_BASE + pe * BLOCK_SIZE] = 0.0;
+        printf("  PE%d flag → addr %d\n", pe, FLAGS_BASE + pe * BLOCK_SIZE);
+    }
+    mem->data[CONSTANTS_BASE] = -(double)(NUM_PES - 1);  // Constante para barrier
+    printf("  Barrier constant (-%.0f) → addr %d\n", (double)(NUM_PES - 1), CONSTANTS_BASE);
     
     // Cálculo esperado
     double expected = 0.0;
-    for (int i = 1; i <= 16; i++) {
+    for (int i = 1; i <= VECTOR_SIZE; i++) {
         expected += i * 1.0;
     }
     printf("[DotProd] Expected result: %.2f\n", expected);
@@ -58,7 +64,7 @@ void dotprod_init_data(Memory* mem) {
 
 double dotprod_get_result(Memory* mem) {
     pthread_mutex_lock(&mem->mutex);
-    double result = mem->data[216];  // Nueva dirección para resultado final
+    double result = mem->data[FINAL_RESULT_ADDR];
     pthread_mutex_unlock(&mem->mutex);
     return result;
 }
@@ -77,33 +83,36 @@ void dotprod_print_results(Memory* mem) {
     // Imprimir vectores de entrada
     printf("\nInput Vectors:\n");
     printf("  Vector A: [");
-    for (int i = 0; i < 16; i++) {
-        printf("%.0f", mem->data[i]);
-        if (i < 15) printf(", ");
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        printf("%.0f", mem->data[VECTOR_A_BASE + i]);
+        if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
     printf("  Vector B: [");
-    for (int i = 0; i < 16; i++) {
-        printf("%.0f", mem->data[100 + i]);
-        if (i < 15) printf(", ");
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        printf("%.0f", mem->data[VECTOR_B_BASE + i]);
+        if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
     // Imprimir resultados parciales
     printf("\nPartial Products (per PE):\n");
-    printf("  PE0 (elements 0-3):   %.2f (addr 200)\n", mem->data[200]);
-    printf("  PE1 (elements 4-7):   %.2f (addr 204)\n", mem->data[204]);
-    printf("  PE2 (elements 8-11):  %.2f (addr 208)\n", mem->data[208]);
-    printf("  PE3 (elements 12-15): %.2f (addr 212)\n", mem->data[212]);
+    for (int pe = 0; pe < NUM_PES; pe++) {
+        int start_elem = pe * SEGMENT_SIZE;
+        int end_elem = start_elem + SEGMENT_SIZE - 1;
+        int addr = RESULTS_BASE + pe * BLOCK_SIZE;
+        printf("  PE%d (elements %d-%d):   %.2f (addr %d)\n", 
+               pe, start_elem, end_elem, mem->data[addr], addr);
+    }
     
     // Resultado final
-    double final_result = mem->data[216];
-    printf("\nFinal Dot Product: %.2f (addr 216)\n", final_result);
+    double final_result = mem->data[FINAL_RESULT_ADDR];
+    printf("\nFinal Dot Product: %.2f (addr %d)\n", final_result, FINAL_RESULT_ADDR);
     
     // Verificación
     double expected = 0.0;
-    for (int i = 1; i <= 16; i++) {
+    for (int i = 1; i <= VECTOR_SIZE; i++) {
         expected += i * 1.0;
     }
     

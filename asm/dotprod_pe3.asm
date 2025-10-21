@@ -1,95 +1,81 @@
 # ============================================================================
-# Producto Punto Paralelo - PE3
+# Producto Punto Paralelo - PE3 (MASTER - GENERADO CON LOOP)
 # ============================================================================
-# Segmento: A[12-15] · B[12-15] + SUMA FINAL
-# Vector A: direcciones 0-15 (16 elementos)
-# Vector B: direcciones 100-115 (16 elementos)
-# Resultado parcial: dirección 212 (bloque separado)
-# Resultado final: dirección 216 (bloque separado)
+# Segmento: elementos [12 to 15] + REDUCCIÓN
+# Configuración: VECTOR_SIZE=16, SEGMENT_SIZE=4
 # ============================================================================
 
 # ============================================================================
-# FASE 1: Calcular producto parcial A[12-15] · B[12-15]
+# FASE 1: Calcular producto parcial propio con LOOP
 # ============================================================================
 
-# Inicializar acumulador
-# R2 ya está inicializado en 0.0 al inicio del programa
+# Inicialización
+MOV R0, 0.0         # R0 = acumulador (resultado parcial)
+MOV R1, 12.0         # R1 = índice de elemento actual
+MOV R2, 100.0       # R2 = base de vector B
+MOV R3, 4.0        # R3 = contador del loop (SEGMENT_SIZE)
 
-# Calcular A[12] * B[12]
-LOAD R4, [12]     # R4 = A[12]
-LOAD R6, [112]    # R6 = B[12]
-FMUL R7, R4, R6   # R7 = A[12] * B[12]
-FADD R2, R2, R7   # R2 += A[12] * B[12]
+# LOOP: Procesar segmento propio
+LOOP_START:
+LOAD R4, [R1]       # R4 = A[i]
+FADD R5, R2, R1     # R5 = VECTOR_B_BASE + i
+LOAD R6, [R5]       # R6 = B[i]
+FMUL R7, R4, R6     # R7 = A[i] * B[i]
+FADD R0, R0, R7     # acum += A[i] * B[i]
+INC R1              # i++
+DEC R3              # contador--
+JNZ LOOP_START      # Si R3 != 0, repetir
 
-# Calcular A[13] * B[13]
-LOAD R4, [13]     # R4 = A[13]
-LOAD R6, [113]    # R6 = B[13]
-FMUL R7, R4, R6   # R7 = A[13] * B[13]
-FADD R2, R2, R7   # R2 += A[13] * B[13]
-
-# Calcular A[14] * B[14]
-LOAD R4, [14]     # R4 = A[14]
-LOAD R6, [114]    # R6 = B[14]
-FMUL R7, R4, R6   # R7 = A[14] * B[14]
-FADD R2, R2, R7   # R2 += A[14] * B[14]
-
-# Calcular A[15] * B[15]
-LOAD R4, [15]     # R4 = A[15]
-LOAD R6, [115]    # R6 = B[15]
-FMUL R7, R4, R6   # R7 = A[15] * B[15]
-FADD R2, R2, R7   # R2 += A[15] * B[15]
-
-# Guardar resultado parcial de PE3 en dirección 212 (bloque separado)
-STORE R2, [212]
+# Guardar resultado parcial de PE3
+MOV R5, 212.0       # RESULTS_BASE + 3*BLOCK_SIZE
+STORE R0, [R5]      # Guardar resultado parcial de PE3
 
 # ============================================================================
-# BARRIER: Esperar a que PE0, PE1, PE2 terminen (busy-waiting con loop)
+# FASE 2: BARRIER - Esperar a que otros PEs terminen
 # ============================================================================
 WAIT_LOOP:
-LOAD R3, [220]    # R3 = flag PE0
-LOAD R4, [224]    # R4 = flag PE1 (bloque separado)
-LOAD R5, [228]    # R5 = flag PE2 (bloque separado)
-# Sumar los 3 flags
-FADD R6, R3, R4   # R6 = flag0 + flag1
-FADD R6, R6, R5   # R6 = flag0 + flag1 + flag2 (debe ser 3.0 cuando todos terminaron)
-# Restar 3.0: R6 + (-3.0)
-LOAD R7, [232]    # R7 = -3.0 (constante en memoria, bloque separado)
-FADD R3, R6, R7   # R3 = suma_flags - 3.0 (reusar R3)
-# Si R3 == 0, entonces zero_flag=1 y JNZ no salta (todos terminaron)
-# Si R3 != 0, entonces zero_flag=0 y JNZ salta al inicio del loop
-JNZ WAIT_LOOP     # Si zero_flag==0 (R3!=0), saltar a WAIT_LOOP
-# Si llegamos aquí, todos los PEs terminaron (suma_flags == 3.0)
+MOV R1, 220.0      # Dirección flag PE0
+LOAD R1, [R1]  # R1 = flag PE0
+MOV R2, 224.0      # Dirección flag PE1
+LOAD R2, [R2]  # R2 = flag PE1
+MOV R3, 228.0      # Dirección flag PE2
+LOAD R3, [R3]  # R3 = flag PE2
+
+# Sumar flags (deben sumar 3.0)
+FADD R6, R1, R2     # R6 = flag0 + flag1
+FADD R6, R6, R3     # R6 += flag2
+
+# Restar 3.0 para verificar
+MOV R7, 232.0       # Dirección de constante -3.0
+LOAD R7, [R7]       # R7 = -3.0
+FADD R6, R6, R7     # R6 = suma_flags - 3.0
+JNZ WAIT_LOOP       # Si R6 != 0, repetir
 
 # ============================================================================
-# FASE 2: Reducción - Sumar todos los productos parciales
+# FASE 3: REDUCCIÓN - Sumar todos los productos parciales con LOOP
 # ============================================================================
-# PE3 es responsable de la suma final de los 4 productos parciales
-# Resultados parciales en: 200 (PE0), 204 (PE1), 208 (PE2), 212 (PE3)
 
-# Inicializar acumulador para suma final
-# R0 ya está inicializado en 0.0 al inicio del programa
+MOV R0, 0.0         # R0 = acumulador final
+MOV R1, 200.0        # R1 = base de resultados parciales
+MOV R2, 4.0             # R2 = contador (NUM_PES)
+MOV R3, 4.0          # R3 = BLOCK_SIZE (offset entre resultados)
 
-# Cargar y sumar producto parcial de PE0
-LOAD R1, [200]    # R1 = resultado de PE0
-FADD R0, R0, R1   # R0 += PE0
+REDUCE_LOOP:
+# Cargar resultado parcial
+LOAD R4, [R1]       # R4 = resultado_parcial[i]
+FADD R0, R0, R4     # acum += resultado_parcial[i]
 
-# Cargar y sumar producto parcial de PE1
-LOAD R1, [204]    # R1 = resultado de PE1
-FADD R0, R0, R1   # R0 += PE1
+# Avanzar a siguiente resultado (dirección += BLOCK_SIZE)
+FADD R1, R1, R3     # R1 += BLOCK_SIZE
 
-# Cargar y sumar producto parcial de PE2
-LOAD R1, [208]    # R1 = resultado de PE2
-FADD R0, R0, R1   # R0 += PE2
-
-# Cargar y sumar producto parcial de PE3
-LOAD R1, [212]    # R1 = resultado de PE3
-FADD R0, R0, R1   # R0 += PE3
+# Decrementar contador
+DEC R2              # contador--
+JNZ REDUCE_LOOP     # Si R2 != 0, repetir
 
 # ============================================================================
-# Guardar resultado final del producto punto
+# Guardar resultado final
 # ============================================================================
-# Guardar producto punto final en dirección 216 (bloque separado)
-STORE R0, [216]
+MOV R2, 216.0       # Dirección resultado final
+STORE R0, [R2]      # Guardar producto punto final
 
-# Fin del programa
 HALT
