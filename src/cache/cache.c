@@ -2,6 +2,28 @@
 #include "bus.h"
 #include <stdio.h>
 
+// Estructura para pasar contexto al callback de BUS_RDX (OPCIÓN B)
+typedef struct {
+    CacheLine* victim;
+    int offset;
+    double value;
+    int set_index;
+    int victim_way;
+    int pe_id;
+} WriteCallbackContext;
+
+// Callback que se ejecuta después del handler BUS_RDX
+static void write_callback(void* context) {
+    WriteCallbackContext* ctx = (WriteCallbackContext*)context;
+    
+    // Escribir el valor en el offset correcto y marcar como M
+    ctx->victim->data[ctx->offset] = ctx->value;
+    ctx->victim->state = M;
+    
+    printf("[CALLBACK PE%d] WRITE completado -> way %d, offset %d, valor=%.2f (estado M)\n", 
+           ctx->pe_id, ctx->victim_way, ctx->offset, ctx->value);
+}
+
 void cache_init(Cache* cache) {
     cache->bus = NULL;
     cache->pe_id = -1;  // Se asignará después
@@ -202,21 +224,28 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     victim->tag = tag;
     victim->state = I;  // Temporalmente inválido antes del broadcast
 
+    // OPCIÓN B: Preparar contexto para el callback
+    WriteCallbackContext ctx = {
+        .victim = victim,
+        .offset = offset,
+        .value = value,
+        .set_index = set_index,
+        .victim_way = victim_way,
+        .pe_id = pe_id
+    };
+
     // Desbloquear antes de usar el bus
     pthread_mutex_unlock(&cache->mutex);
     
-    // Enviar BUS_RDX - el handler invalidará otras copias y traerá el bloque
-    bus_broadcast(cache->bus, BUS_RDX, block_base, pe_id);
+    // Enviar BUS_RDX con callback - el handler traerá el bloque y el callback escribirá
+    bus_broadcast_with_callback(cache->bus, BUS_RDX, block_base, pe_id, 
+                                 write_callback, &ctx);
 
-    // Re-lockear para escribir
+    // Re-lockear para actualizar LRU
     pthread_mutex_lock(&cache->mutex);
     
-    // Escribir el nuevo valor en el offset correcto y marcar como M
-    victim->data[offset] = value;  // ← Usa el offset aquí
-    victim->state = M;
+    // El callback ya escribió el valor y puso estado M
     cache_update_lru(cache, set_index, victim_way);  // ← Actualizar LRU
-    printf("[PE%d] WRITE completado -> bloque traído en way %d, offset %d, valor=%.2f (estado M, LRU actualizado)\n", 
-           pe_id, victim_way, offset, value);
     
     pthread_mutex_unlock(&cache->mutex);
 }

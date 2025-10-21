@@ -16,6 +16,10 @@ struct Bus; // Declaración adelantada
 // Tipo de puntero a función handler
 typedef void (*BusHandler)(struct Bus* bus, int addr, int src_pe);
 
+// Tipo de callback que el PE puede pasar para ejecutar después del handler
+// Permite al PE hacer operaciones adicionales (como escribir) de forma atómica
+typedef void (*BusCallback)(void* context);
+
 // Estructura de solicitud del bus (una por PE)
 typedef struct {
     BusMsg msg;
@@ -24,6 +28,8 @@ typedef struct {
     volatile bool has_request;   // Si hay solicitud pendiente
     volatile bool processed;     // Si ya fue procesada
     pthread_cond_t done;         // Condition variable para este PE
+    BusCallback callback;        // Callback opcional para ejecutar después del handler
+    void* callback_context;      // Contexto para el callback
 } PERequest;
 
 // Estructura principal del bus
@@ -43,6 +49,8 @@ typedef struct Bus {
 void bus_init(Bus* bus, Cache* caches[], Memory* memory);
 void bus_destroy(Bus* bus);
 void bus_broadcast(Bus* bus, BusMsg msg, int addr, int src_pe);
+void bus_broadcast_with_callback(Bus* bus, BusMsg msg, int addr, int src_pe, 
+                                  BusCallback callback, void* callback_context);
 void* bus_thread_func(void* arg);  // Función del thread del bus
 
 #endif

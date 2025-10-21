@@ -45,6 +45,11 @@ void bus_destroy(Bus* bus) {
 }
 
 void bus_broadcast(Bus* bus, BusMsg msg, int addr, int src_pe) {
+    bus_broadcast_with_callback(bus, msg, addr, src_pe, NULL, NULL);
+}
+
+void bus_broadcast_with_callback(Bus* bus, BusMsg msg, int addr, int src_pe,
+                                   BusCallback callback, void* callback_context) {
     pthread_mutex_lock(&bus->mutex);
     
     // Esperar si este PE ya tiene una solicitud pendiente
@@ -58,6 +63,8 @@ void bus_broadcast(Bus* bus, BusMsg msg, int addr, int src_pe) {
     bus->requests[src_pe].src_pe = src_pe;
     bus->requests[src_pe].has_request = true;
     bus->requests[src_pe].processed = false;
+    bus->requests[src_pe].callback = callback;
+    bus->requests[src_pe].callback_context = callback_context;
     
     // Señalar que hay una nueva solicitud
     pthread_cond_signal(&bus->request_ready);
@@ -115,11 +122,6 @@ void* bus_thread_func(void* arg) {
             }
         }
         
-        if (!req) {
-            pthread_mutex_unlock(&bus->mutex);
-            continue;
-        }
-        
         printf("[BUS] [RR] PE%d: Señal %d (addr=%d)\n", 
                selected_pe, req->msg, req->addr);
         
@@ -142,8 +144,6 @@ void* bus_thread_func(void* arg) {
                 break;
         }
         
-        pthread_mutex_unlock(&bus->mutex);
-        
         // Llamar al handler (fuera del lock para evitar deadlock)
         if (bus->handlers[req->msg]) {
             bus->handlers[req->msg](bus, req->addr, req->src_pe);
@@ -151,7 +151,12 @@ void* bus_thread_func(void* arg) {
             printf("[BUS] No hay handler definido para la señal %d\n", req->msg);
         }
         
-        pthread_mutex_lock(&bus->mutex);
+        // Ejecutar callback si fue proporcionado (OPCIÓN B)
+        // El callback se ejecuta después del handler, antes de señalizar al PE
+        if (req->callback) {
+            printf("[BUS] Ejecutando callback para PE%d\n", selected_pe);
+            req->callback(req->callback_context);
+        }
         
         // Marcar como procesada y señalizar al PE
         req->processed = true;
