@@ -41,6 +41,7 @@ void* pe_run(void* arg) {
     for (int i = 0; i < prog->size && i < 10; i++) {  // Mostrar máximo 10 instrucciones
         Instruction* inst = &prog->code[i];
         printf("[PE%d]   [%2d] %s ", pe->id, i, 
+               inst->op == OP_MOV ? "MOV" :
                inst->op == OP_LOAD ? "LOAD" :
                inst->op == OP_STORE ? "STORE" :
                inst->op == OP_FADD ? "FADD" :
@@ -50,9 +51,16 @@ void* pe_run(void* arg) {
                inst->op == OP_JNZ ? "JNZ" : "HALT");
         
         switch (inst->op) {
+            case OP_MOV:
+                printf("R%d, %.2f", inst->rd, inst->imm);
+                break;
             case OP_LOAD:
             case OP_STORE:
-                printf("R%d, [%d]", inst->rd, inst->addr);
+                if (inst->addr_mode == ADDR_DIRECT) {
+                    printf("R%d, [%d]", inst->rd, inst->addr);
+                } else {
+                    printf("R%d, [R%d]", inst->rd, inst->addr_reg);
+                }
                 break;
             case OP_FADD:
             case OP_FMUL:

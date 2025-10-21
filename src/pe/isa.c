@@ -5,6 +5,7 @@
 
 const char* opcode_to_str(OpCode op) {
     switch (op) {
+        case OP_MOV:   return "MOV";
         case OP_LOAD:  return "LOAD";
         case OP_STORE: return "STORE";
         case OP_FADD:  return "FADD";
@@ -21,11 +22,22 @@ void print_instruction(Instruction* inst, uint64_t pc) {
     printf("[PC=%lu] ", pc);
     
     switch (inst->op) {
+        case OP_MOV:
+            printf("MOV R%d, %.2f", inst->rd, inst->imm);
+            break;
         case OP_LOAD:
-            printf("LOAD R%d, [%d]", inst->rd, inst->addr);
+            if (inst->addr_mode == ADDR_DIRECT) {
+                printf("LOAD R%d, [%d]", inst->rd, inst->addr);
+            } else {
+                printf("LOAD R%d, [R%d]", inst->rd, inst->addr_reg);
+            }
             break;
         case OP_STORE:
-            printf("STORE R%d, [%d]", inst->rd, inst->addr);
+            if (inst->addr_mode == ADDR_DIRECT) {
+                printf("STORE R%d, [%d]", inst->rd, inst->addr);
+            } else {
+                printf("STORE R%d, [R%d]", inst->rd, inst->addr_reg);
+            }
             break;
         case OP_FADD:
             printf("FADD R%d, R%d, R%d", inst->rd, inst->ra, inst->rb);
@@ -54,26 +66,54 @@ void print_instruction(Instruction* inst, uint64_t pc) {
 
 int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int pe_id) {
     double val_a, val_b, result;
+    int effective_addr;
     
     // Imprimir instrucción que se va a ejecutar
     printf("[PE%d] Ejecutando: ", pe_id);
     print_instruction(inst, rf->pc);
     
     switch (inst->op) {
+        case OP_MOV:
+            // MOV Rd, imm - Cargar valor inmediato al registro
+            printf("  [PE%d] MOV: %.6f -> R%d\n", pe_id, inst->imm, inst->rd);
+            reg_write(rf, inst->rd, inst->imm);
+            rf->pc++;
+            break;
+            
         case OP_LOAD:
-            // LOAD Rd, [addr] - Leer de memoria al registro
-            printf("  [PE%d] LOAD: Leyendo memoria[%d] -> R%d\n", pe_id, inst->addr, inst->rd);
-            result = cache_read(cache, inst->addr, pe_id);
+            // LOAD Rd, [addr] o LOAD Rd, [Rx] - Leer de memoria al registro
+            // Calcular dirección efectiva según el modo de direccionamiento
+            if (inst->addr_mode == ADDR_DIRECT) {
+                effective_addr = inst->addr;
+                printf("  [PE%d] LOAD: Leyendo memoria[%d] -> R%d\n", pe_id, effective_addr, inst->rd);
+            } else {
+                effective_addr = (int)reg_read(rf, inst->addr_reg);
+                printf("  [PE%d] LOAD: Leyendo memoria[R%d=%d] -> R%d\n", 
+                       pe_id, inst->addr_reg, effective_addr, inst->rd);
+            }
+            
+            result = cache_read(cache, effective_addr, pe_id);
             reg_write(rf, inst->rd, result);
             printf("  [PE%d] R%d = %.6f\n", pe_id, inst->rd, result);
             rf->pc++;
             break;
             
         case OP_STORE:
-            // STORE Rs, [addr] - Escribir registro a memoria
+            // STORE Rs, [addr] o STORE Rs, [Rx] - Escribir registro a memoria
             val_a = reg_read(rf, inst->rd);
-            printf("  [PE%d] STORE: R%d (%.6f) -> memoria[%d]\n", pe_id, inst->rd, val_a, inst->addr);
-            cache_write(cache, inst->addr, val_a, pe_id);
+            
+            // Calcular dirección efectiva según el modo de direccionamiento
+            if (inst->addr_mode == ADDR_DIRECT) {
+                effective_addr = inst->addr;
+                printf("  [PE%d] STORE: R%d (%.6f) -> memoria[%d]\n", 
+                       pe_id, inst->rd, val_a, effective_addr);
+            } else {
+                effective_addr = (int)reg_read(rf, inst->addr_reg);
+                printf("  [PE%d] STORE: R%d (%.6f) -> memoria[R%d=%d]\n", 
+                       pe_id, inst->rd, val_a, inst->addr_reg, effective_addr);
+            }
+            
+            cache_write(cache, effective_addr, val_a, pe_id);
             rf->pc++;
             break;
             

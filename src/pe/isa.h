@@ -8,15 +8,26 @@
  * @brief Códigos de operación de la ISA
  */
 typedef enum {
-    OP_LOAD,   // LOAD Rd, [addr]   - Lee de memoria a registro
-    OP_STORE,  // STORE Rs, [addr]  - Escribe registro a memoria
-    OP_FADD,   // FADD Rd, Ra, Rb   - Suma flotante: Rd = Ra + Rb
-    OP_FMUL,   // FMUL Rd, Ra, Rb   - Multiplicación: Rd = Ra * Rb
+    OP_MOV,    // MOV Rd, imm        - Carga valor inmediato a registro
+    OP_LOAD,   // LOAD Rd, [addr]    - Lee de memoria a registro (directo)
+               // LOAD Rd, [Rx]      - Lee de memoria a registro (indirecto)
+    OP_STORE,  // STORE Rs, [addr]   - Escribe registro a memoria (directo)
+               // STORE Rs, [Rx]     - Escribe registro a memoria (indirecto)
+    OP_FADD,   // FADD Rd, Ra, Rb    - Suma flotante: Rd = Ra + Rb
+    OP_FMUL,   // FMUL Rd, Ra, Rb    - Multiplicación: Rd = Ra * Rb
     OP_INC,    // INC Rd             - Incremento: Rd = Rd + 1
     OP_DEC,    // DEC Rd             - Decremento: Rd = Rd - 1
-    OP_JNZ,    // JNZ Rd, label      - Salto si Rd != 0
+    OP_JNZ,    // JNZ label          - Salto si zero_flag != 0
     OP_HALT    // HALT               - Termina ejecución
 } OpCode;
+
+/**
+ * @brief Modos de direccionamiento para LOAD/STORE
+ */
+typedef enum {
+    ADDR_DIRECT,   // [addr]    - Dirección inmediata (valor numérico)
+    ADDR_REGISTER  // [Rx]      - Dirección en registro (indirecto)
+} AddressingMode;
 
 /**
  * @brief Estructura de una instrucción
@@ -24,12 +35,15 @@ typedef enum {
  * Representa una instrucción del ISA con todos sus operandos posibles
  */
 typedef struct {
-    OpCode op;      // Código de operación
-    int rd;         // Registro destino
-    int ra;         // Registro fuente A
-    int rb;         // Registro fuente B
-    int addr;       // Dirección de memoria (para LOAD/STORE)
-    int label;      // Etiqueta de salto (para JNZ)
+    OpCode op;              // Código de operación
+    int rd;                 // Registro destino
+    int ra;                 // Registro fuente A
+    int rb;                 // Registro fuente B
+    double imm;             // Valor inmediato (para MOV)
+    int addr;               // Dirección inmediata (para LOAD/STORE directo)
+    int addr_reg;           // Registro con dirección (para LOAD/STORE indirecto)
+    AddressingMode addr_mode; // Modo de direccionamiento (directo o indirecto)
+    int label;              // Etiqueta de salto (para JNZ)
 } Instruction;
 
 /**

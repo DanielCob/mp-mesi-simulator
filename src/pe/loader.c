@@ -75,6 +75,7 @@ static int find_label(const LabelTable* table, const char* name) {
  */
 static const char* opcode_to_string_local(OpCode op) {
     switch (op) {
+        case OP_MOV:   return "MOV";
         case OP_LOAD:  return "LOAD";
         case OP_STORE: return "STORE";
         case OP_FADD:  return "FADD";
@@ -108,6 +109,7 @@ static char* trim(char* str) {
  * @brief Convierte un string de opcode a OpCode enum
  */
 static OpCode parse_opcode(const char* str) {
+    if (strcmp(str, "MOV") == 0)   return OP_MOV;
     if (strcmp(str, "LOAD") == 0)  return OP_LOAD;
     if (strcmp(str, "STORE") == 0) return OP_STORE;
     if (strcmp(str, "FADD") == 0)  return OP_FADD;
@@ -221,7 +223,10 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
     inst->rd = 0;
     inst->ra = 0;
     inst->rb = 0;
+    inst->imm = 0.0;
     inst->addr = 0;
+    inst->addr_reg = 0;
+    inst->addr_mode = ADDR_DIRECT;
     inst->label = 0;
     
     // Parsear operandos según el tipo de instrucción
@@ -229,35 +234,83 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
     operands = trim(operands);
     
     char reg1[8], reg2[8], reg3[8];
-    int addr;
+    char addr_str[32];
+    double imm_value;
     
     switch (op) {
-        case OP_LOAD:
-            // LOAD Rd, addr
-            if (sscanf(operands, "%7s %d", reg1, &addr) == 2) {
+        case OP_MOV:
+            // MOV Rd, imm
+            if (sscanf(operands, "%7[^,], %lf", reg1, &imm_value) == 2) {
                 inst->rd = parse_register(reg1);
-                inst->addr = addr;
+                if (inst->rd < 0) {
+                    fprintf(stderr, "[Loader] ERROR: Registro inválido en MOV: %s\n", reg1);
+                    return -1;
+                }
+                inst->imm = imm_value;
+            } else {
+                fprintf(stderr, "[Loader] ERROR: Formato inválido para MOV: %s\n", operands);
+                return -1;
+            }
+            break;
+            
+        case OP_LOAD:
+            // LOAD Rd, [addr] o LOAD Rd, [Rx]
+            if (sscanf(operands, "%7[^,], [%31[^]]]", reg1, addr_str) == 2) {
+                inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
                     fprintf(stderr, "[Loader] ERROR: Registro inválido en LOAD: %s\n", reg1);
                     return -1;
                 }
+                
+                // Determinar si es directo [número] o indirecto [Rx]
+                char* trimmed_addr = trim(addr_str);
+                if (trimmed_addr[0] == 'R' || trimmed_addr[0] == 'r') {
+                    // Es direccionamiento indirecto [Rx]
+                    inst->addr_reg = parse_register(trimmed_addr);
+                    if (inst->addr_reg < 0) {
+                        fprintf(stderr, "[Loader] ERROR: Registro de dirección inválido en LOAD: [%s]\n", 
+                                trimmed_addr);
+                        return -1;
+                    }
+                    inst->addr_mode = ADDR_REGISTER;
+                } else {
+                    // Es direccionamiento directo [número]
+                    inst->addr = atoi(trimmed_addr);
+                    inst->addr_mode = ADDR_DIRECT;
+                }
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para LOAD: %s\n", operands);
+                fprintf(stderr, "[Loader] ERROR: Formato inválido para LOAD (use [addr] o [Rx]): %s\n", operands);
                 return -1;
             }
             break;
             
         case OP_STORE:
-            // STORE Rs, addr
-            if (sscanf(operands, "%7s %d", reg1, &addr) == 2) {
+            // STORE Rs, [addr] o STORE Rs, [Rx]
+            if (sscanf(operands, "%7[^,], [%31[^]]]", reg1, addr_str) == 2) {
                 inst->rd = parse_register(reg1);  // rd se usa como source en STORE
-                inst->addr = addr;
                 if (inst->rd < 0) {
                     fprintf(stderr, "[Loader] ERROR: Registro inválido en STORE: %s\n", reg1);
                     return -1;
                 }
+                
+                // Determinar si es directo [número] o indirecto [Rx]
+                char* trimmed_addr = trim(addr_str);
+                if (trimmed_addr[0] == 'R' || trimmed_addr[0] == 'r') {
+                    // Es direccionamiento indirecto [Rx]
+                    inst->addr_reg = parse_register(trimmed_addr);
+                    if (inst->addr_reg < 0) {
+                        fprintf(stderr, "[Loader] ERROR: Registro de dirección inválido en STORE: [%s]\n", 
+                                trimmed_addr);
+                        return -1;
+                    }
+                    inst->addr_mode = ADDR_REGISTER;
+                } else {
+                    // Es direccionamiento directo [número]
+                    inst->addr = atoi(trimmed_addr);
+                    inst->addr_mode = ADDR_DIRECT;
+                }
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para STORE: %s\n", operands);
+                fprintf(stderr, "[Loader] ERROR: Formato inválido para STORE (use [addr] o [Rx]): %s\n", operands);
                 return -1;
             }
             break;
@@ -502,11 +555,22 @@ void print_program(const Program* prog) {
         printf("║ [%3d] %-8s ", i, op_name);
         
         switch (inst->op) {
+            case OP_MOV:
+                printf("R%d, %.2f", inst->rd, inst->imm);
+                break;
             case OP_LOAD:
-                printf("R%d, [%d]", inst->rd, inst->addr);
+                if (inst->addr_mode == ADDR_DIRECT) {
+                    printf("R%d, [%d]", inst->rd, inst->addr);
+                } else {
+                    printf("R%d, [R%d]", inst->rd, inst->addr_reg);
+                }
                 break;
             case OP_STORE:
-                printf("R%d, [%d]", inst->rd, inst->addr);
+                if (inst->addr_mode == ADDR_DIRECT) {
+                    printf("R%d, [%d]", inst->rd, inst->addr);
+                } else {
+                    printf("R%d, [R%d]", inst->rd, inst->addr_reg);
+                }
                 break;
             case OP_FADD:
             case OP_FMUL:

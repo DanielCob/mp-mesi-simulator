@@ -4,7 +4,7 @@
 # Segmento: A[4-7] · B[4-7]
 # Vector A: direcciones 0-15 (16 elementos)
 # Vector B: direcciones 100-115 (16 elementos)
-# Resultado parcial: dirección 204 (bloque separado)
+# Resultado parcial: dirección 201
 # ============================================================================
 
 # Inicializar acumulador
@@ -13,45 +13,45 @@
 # ============================================================================
 # Calcular A[4] * B[4]
 # ============================================================================
-LOAD R4, 4        # R4 = A[4]
-LOAD R6, 104      # R6 = B[4]
+LOAD R4, [4]      # R4 = A[4]
+LOAD R6, [104]    # R6 = B[4]
 FMUL R7, R4, R6   # R7 = A[4] * B[4]
 FADD R2, R2, R7   # R2 += A[4] * B[4]
 
 # ============================================================================
 # Calcular A[5] * B[5]
 # ============================================================================
-LOAD R4, 5        # R4 = A[5]
-LOAD R6, 105      # R6 = B[5]
+LOAD R4, [5]      # R4 = A[5]
+LOAD R6, [105]    # R6 = B[5]
 FMUL R7, R4, R6   # R7 = A[5] * B[5]
 FADD R2, R2, R7   # R2 += A[5] * B[5]
 
 # ============================================================================
 # Calcular A[6] * B[6]
 # ============================================================================
-LOAD R4, 6        # R4 = A[6]
-LOAD R6, 106      # R6 = B[6]
+LOAD R4, [6]      # R4 = A[6]
+LOAD R6, [106]    # R6 = B[6]
 FMUL R7, R4, R6   # R7 = A[6] * B[6]
 FADD R2, R2, R7   # R2 += A[6] * B[6]
 
 # ============================================================================
 # Calcular A[7] * B[7]
 # ============================================================================
-LOAD R4, 7        # R4 = A[7]
-LOAD R6, 107      # R6 = B[7]
+LOAD R4, [7]      # R4 = A[7]
+LOAD R6, [107]    # R6 = B[7]
 FMUL R7, R4, R6   # R7 = A[7] * B[7]
 FADD R2, R2, R7   # R2 += A[7] * B[7]
 
 # ============================================================================
 # Guardar resultado parcial en memoria compartida
 # ============================================================================
-STORE R2, 204     # Guardar producto parcial de PE1 en dirección 204 (bloque separado)
+STORE R2, [204]   # Guardar producto parcial de PE1 en dirección 204
 
 # ============================================================================
 # Marcar flag de sincronización (barrier)
 # ============================================================================
-LOAD R3, 0        # R3 = 1.0 (del vector A)
-STORE R3, 224     # Flag PE1 = 1.0 (señala que PE1 terminó) - bloque separado
+MOV R3, 1.0       # R3 = 1.0 (valor inmediato)
+STORE R3, [224]   # Flag PE1 = 1.0 (señala que PE1 terminó)
 
 # Fin del programa
 HALT
