@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "log.h"
+#include "config.h"
 
 void stats_init(CacheStats* stats) {
     memset(stats, 0, sizeof(CacheStats));
@@ -46,23 +47,21 @@ void stats_record_bus_traffic(CacheStats* stats, uint64_t bytes_read, uint64_t b
     stats->bytes_written_to_bus += bytes_written;
 }
 
-void stats_record_mesi_transition(CacheStats* stats, int from, int to) {
-    // from: 0=I, 1=E, 2=S, 3=M
-    // to:   0=I, 1=E, 2=S, 3=M
-    
-    if (from == 0 && to == 1) stats->transitions.I_to_E++;
-    else if (from == 0 && to == 2) stats->transitions.I_to_S++;
-    else if (from == 0 && to == 3) stats->transitions.I_to_M++;
-    
-    else if (from == 1 && to == 3) stats->transitions.E_to_M++;
-    else if (from == 1 && to == 2) stats->transitions.E_to_S++;
-    else if (from == 1 && to == 0) stats->transitions.E_to_I++;
-    
-    else if (from == 2 && to == 3) stats->transitions.S_to_M++;
-    else if (from == 2 && to == 0) stats->transitions.S_to_I++;
-    
-    else if (from == 3 && to == 2) stats->transitions.M_to_S++;
-    else if (from == 3 && to == 0) stats->transitions.M_to_I++;
+void stats_record_mesi_transition(CacheStats* stats, MESI_State from, MESI_State to) {
+       // Use enum names (M,E,S,I) from config.h; count transitions by semantic state
+       if (from == I && to == E) stats->transitions.I_to_E++;
+       else if (from == I && to == S) stats->transitions.I_to_S++;
+       else if (from == I && to == M) stats->transitions.I_to_M++;
+
+       else if (from == E && to == M) stats->transitions.E_to_M++;
+       else if (from == E && to == S) stats->transitions.E_to_S++;
+       else if (from == E && to == I) stats->transitions.E_to_I++;
+
+       else if (from == S && to == M) stats->transitions.S_to_M++;
+       else if (from == S && to == I) stats->transitions.S_to_I++;
+
+       else if (from == M && to == S) stats->transitions.M_to_S++;
+       else if (from == M && to == I) stats->transitions.M_to_I++;
 }
 
 void stats_print(const CacheStats* stats, int pe_id) {

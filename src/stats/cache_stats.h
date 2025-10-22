@@ -2,6 +2,7 @@
 #define STATS_H
 
 #include <stdint.h>
+#include "config.h"
 
 /**
  * @brief Estructura para almacenar transiciones de estados MESI
@@ -128,7 +129,7 @@ void stats_record_bus_traffic(CacheStats* stats, uint64_t bytes_read, uint64_t b
  * @param from Estado origen (0=I, 1=E, 2=S, 3=M)
  * @param to Estado destino (0=I, 1=E, 2=S, 3=M)
  */
-void stats_record_mesi_transition(CacheStats* stats, int from, int to);
+void stats_record_mesi_transition(CacheStats* stats, MESI_State from, MESI_State to);
 
 /**
  * @brief Imprime las estadísticas de un PE
