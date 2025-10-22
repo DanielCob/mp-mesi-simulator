@@ -15,7 +15,7 @@ void dotprod_init_data(Memory* mem) {
     // ========================================================================
     // SHARED_CONFIG: Shared configuration read by PEs at startup
     // ========================================================================
-        printf("[DotProd] Initializing SHARED_CONFIG area (addresses %d-%d)\n", 
+        printf("[DotProd] Initializing SHARED_CONFIG area (addresses 0x%X-0x%X)\n", 
         SHARED_CONFIG_ADDR, CFG_PE_START_ADDR + NUM_PES * CFG_PARAMS_PER_PE - 1);
     
     // Global system configuration
@@ -28,8 +28,8 @@ void dotprod_init_data(Memory* mem) {
     mem->data[CFG_BARRIER_CHECK_ADDR] = -(double)(NUM_PES - 1);
     
         printf("  Global configuration:\n");
-    printf("    VECTOR_A_ADDR=%d, VECTOR_B_ADDR=%d\n", VECTOR_A_ADDR, VECTOR_B_ADDR);
-    printf("    RESULTS_ADDR=%d, FLAGS_ADDR=%d, FINAL_RESULT=%d\n", 
+    printf("    VECTOR_A_ADDR=0x%X, VECTOR_B_ADDR=0x%X\n", VECTOR_A_ADDR, VECTOR_B_ADDR);
+    printf("    RESULTS_ADDR=0x%X, FLAGS_ADDR=0x%X, FINAL_RESULT=0x%X\n", 
            RESULTS_ADDR, FLAGS_ADDR, FINAL_RESULT_ADDR);
     printf("    NUM_PES=%d, BARRIER_CHECK=%.0f\n", NUM_PES, mem->data[CFG_BARRIER_CHECK_ADDR]);
     
@@ -42,7 +42,7 @@ void dotprod_init_data(Memory* mem) {
         mem->data[CFG_PE(pe, PE_START_INDEX)] = (double)start_idx;
         mem->data[CFG_PE(pe, PE_SEGMENT_SIZE)] = (double)segment_size;
         
-        printf("    PE%d: start=%d, size=%d (addr %d-%d)\n",
+    printf("    PE%d: start=%d, size=%d (addr 0x%X-0x%X)\n",
                pe, start_idx, segment_size, 
                CFG_PE(pe, 0), CFG_PE(pe, 1));
     }
@@ -50,37 +50,37 @@ void dotprod_init_data(Memory* mem) {
     // ========================================================================
     // Initialize partial results area (1 block: 4 values)
     // ========================================================================
-        printf("[DotProd] Initializing results area (1 cache block at addr %d)\n", RESULTS_ADDR);
+        printf("[DotProd] Initializing results area (1 cache block at addr 0x%X)\n", RESULTS_ADDR);
     for (int pe = 0; pe < NUM_PES; pe++) {
         mem->data[RESULTS_ADDR + pe] = 0.0;
-            printf("  PE%d result -> addr %d\n", pe, RESULTS_ADDR + pe);
+            printf("  PE%d result -> addr 0x%X\n", pe, RESULTS_ADDR + pe);
     }
     
     // ========================================================================
     // Initialize synchronization flags (1 block: first 3 values)
     // ========================================================================
-        printf("[DotProd] Initializing synchronization flags (1 cache block at addr %d)\n", FLAGS_ADDR);
+        printf("[DotProd] Initializing synchronization flags (1 cache block at addr 0x%X)\n", FLAGS_ADDR);
     for (int pe = 0; pe < NUM_PES - 1; pe++) {  // Solo PE0-PE2 necesitan flags
         mem->data[FLAGS_ADDR + pe] = 0.0;
-            printf("  PE%d flag -> addr %d\n", pe, FLAGS_ADDR + pe);
+            printf("  PE%d flag -> addr 0x%X\n", pe, FLAGS_ADDR + pe);
     }
     
     // Final result
     mem->data[FINAL_RESULT_ADDR] = 0.0;
-    printf("[DotProd] Final result -> addr %d\n", FINAL_RESULT_ADDR);
+    printf("[DotProd] Final result -> addr 0x%X\n", FINAL_RESULT_ADDR);
     
     // ========================================================================
     // Data vectors (at the end of memory)
     // ========================================================================
     printf("[DotProd] Vector memory layout:\n");
-    printf("  Start aligned: %d\n", VECTORS_START_ALIGNED);
+    printf("  Start aligned: 0x%X\n", VECTORS_START_ALIGNED);
     printf("  BLOCK_SIZE: %d doubles (%zu bytes)\n", BLOCK_SIZE, BLOCK_SIZE * sizeof(double));
     printf("  Misalignment: %d doubles\n", MISALIGNMENT_OFFSET);
     
-    printf("  Vector A: addr %d (aligned: %s, offset=%d)\n", 
+    printf("  Vector A: addr 0x%X (aligned: %s, offset=%d)\n", 
         VECTOR_A_ADDR, IS_ALIGNED(VECTOR_A_ADDR) ? "yes" : "no", 
            GET_BLOCK_OFFSET(VECTOR_A_ADDR));
-    printf("  Vector B: addr %d (aligned: %s, offset=%d)\n", 
+    printf("  Vector B: addr 0x%X (aligned: %s, offset=%d)\n", 
         VECTOR_B_ADDR, IS_ALIGNED(VECTOR_B_ADDR) ? "yes" : "no",
            GET_BLOCK_OFFSET(VECTOR_B_ADDR));
     
@@ -219,13 +219,13 @@ void dotprod_print_results(Memory* mem) {
         int start_elem = pe * SEGMENT_SIZE_WORKER;
         int end_elem = start_elem + SEGMENT_SIZE_WORKER - 1;
     int addr = RESULTS_ADDR + pe;  // Compact: consecutive addresses
-        printf("  PE%d (elements %d-%d):   %.2f (addr %d)\n", 
+    printf("  PE%d (elements %d-%d):   %.2f (addr 0x%X)\n", 
                pe, start_elem, end_elem, mem->data[addr], addr);
     }
     
     // Final result
     double final_result = mem->data[FINAL_RESULT_ADDR];
-    printf("\nFinal dot product: %.2f (addr %d)\n", final_result, FINAL_RESULT_ADDR);
+    printf("\nFinal dot product: %.2f (addr 0x%X)\n", final_result, FINAL_RESULT_ADDR);
     
     // Verification (compute expected dot product from the loaded vectors)
     double expected = 0.0;

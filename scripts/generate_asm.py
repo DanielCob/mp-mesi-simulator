@@ -5,6 +5,42 @@ Genera archivos .asm parametrizados basados en config.h
 """
 
 import re
+import ast
+import operator
+
+def _parse_int(token: str):
+    """Parse ints possibly in hex (0x..)."""
+    token = token.strip()
+    try:
+        return int(token, 0)  # auto base: 0x.., 0.., or decimal
+    except Exception:
+        return None
+
+def _safe_eval_expr(expr: str, symbols: dict):
+    """Very small evaluator for simple +, -, *, / and identifiers from symbols."""
+    try:
+        node = ast.parse(expr, mode='eval').body
+    except Exception:
+        return None
+
+    ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.FloorDiv: operator.floordiv, ast.Div: operator.floordiv, ast.Mod: operator.mod}
+
+    def _eval(n):
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
+            return int(n.value)
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub):
+            return -_eval(n.operand)
+        if isinstance(n, ast.BinOp) and type(n.op) in ops:
+            return ops[type(n.op)](_eval(n.left), _eval(n.right))
+        if isinstance(n, ast.Name):
+            if n.id in symbols:
+                return int(symbols[n.id])
+        raise ValueError("unsupported expr")
+
+    try:
+        return int(_eval(node))
+    except Exception:
+        return None
 
 def read_config_h():
     """Lee la configuración desde config.h"""
@@ -23,19 +59,30 @@ def read_config_h():
             if match:
                 config['NUM_PES'] = int(match.group(1))
             
-            # Buscar constantes básicas
+            # Buscar constantes básicas (acepta hex o expresiones simples)
             for var in ['SHARED_CONFIG_ADDR', 'RESULTS_ADDR', 'FLAGS_ADDR', 'FINAL_RESULT_ADDR']:
-                match = re.search(rf'#define\s+{var}\s+(\d+)', content)
+                match = re.search(rf'#define\s+{var}\s+([^\n]+)', content)
                 if match:
-                    config[var] = int(match.group(1))
+                    raw = match.group(1).strip()
+                    val = _parse_int(raw)
+                    if val is None:
+                        # intentar evaluar usando símbolos ya encontrados
+                        val = _safe_eval_expr(raw, config)
+                    if val is not None:
+                        config[var] = int(val)
             
             # Buscar offsets dentro de SHARED_CONFIG
             for var in ['CFG_VECTOR_A_ADDR', 'CFG_VECTOR_B_ADDR', 'CFG_RESULTS_ADDR',
                         'CFG_FLAGS_ADDR', 'CFG_FINAL_RESULT_ADDR', 'CFG_NUM_PES_ADDR', 
-                        'CFG_BARRIER_CHECK_ADDR', 'CFG_PE_START_ADDR']:
-                match = re.search(rf'#define\s+{var}\s+(\d+)', content)
+                        'CFG_BARRIER_CHECK_ADDR', 'CFG_PE_START_ADDR', 'CFG_GLOBAL_SIZE', 'CFG_PARAMS_PER_PE']:
+                match = re.search(rf'#define\s+{var}\s+([^\n]+)', content)
                 if match:
-                    config[var] = int(match.group(1))
+                    raw = match.group(1).strip()
+                    val = _parse_int(raw)
+                    if val is None:
+                        val = _safe_eval_expr(raw, config)
+                    if val is not None:
+                        config[var] = int(val)
             
             # Calcular SEGMENT_SIZE para workers y master
             if 'VECTOR_SIZE' in config and 'NUM_PES' in config:
@@ -71,9 +118,16 @@ if config:
     CFG_PE_START_ADDR = config.get('CFG_PE_START_ADDR', 8)
     
     # Áreas de sincronización y resultados (compactas)
-    RESULTS_ADDR = config.get('RESULTS_ADDR', 16)
-    FLAGS_ADDR = config.get('FLAGS_ADDR', 20)
-    FINAL_RESULT_ADDR = config.get('FINAL_RESULT_ADDR', 24)
+    # Si no están explícitas, derive desde CFG_GLOBAL_SIZE/NUM_PES
+    if 'RESULTS_ADDR' in config and 'FLAGS_ADDR' in config and 'FINAL_RESULT_ADDR' in config:
+        RESULTS_ADDR = config['RESULTS_ADDR']
+        FLAGS_ADDR = config['FLAGS_ADDR']
+        FINAL_RESULT_ADDR = config['FINAL_RESULT_ADDR']
+    else:
+        base = config.get('CFG_GLOBAL_SIZE', 8) + config.get('CFG_PARAMS_PER_PE', 2) * config.get('NUM_PES', 4)
+        RESULTS_ADDR = base
+        FLAGS_ADDR = RESULTS_ADDR + config.get('NUM_PES', 4)
+        FINAL_RESULT_ADDR = FLAGS_ADDR + config.get('NUM_PES', 4)
 else:
     # Valores por defecto
     VECTOR_SIZE = 16

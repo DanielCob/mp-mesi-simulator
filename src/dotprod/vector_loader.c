@@ -110,7 +110,7 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
 }
 
 void print_vector(const char* name, const double* buffer, int size, int start_addr) {
-    printf("[DotProd] Loading %s into addresses %d-%d\n  %s = [", 
+    printf("[DotProd] Loading %s into addresses 0x%X-0x%X\n  %s = [", 
            name, start_addr, start_addr + size - 1, name);
     
     for (int i = 0; i < size; i++) {

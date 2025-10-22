@@ -21,7 +21,8 @@ INCLUDES = -I$(SRC_DIR) \
            -I$(SRC_DIR)/memory \
            -I$(SRC_DIR)/pe \
            -I$(SRC_DIR)/stats \
-           -I$(SRC_DIR)/dotprod
+		   -I$(SRC_DIR)/dotprod \
+		   -I$(SRC_DIR)/debug
 
 # Buscar todos los archivos .c en src/ y subcarpetas
 # Nota: incluye automáticamente src/log.c

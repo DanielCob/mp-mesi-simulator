@@ -8,10 +8,14 @@
 #include "bus.h"
 #include "memory.h"
 #include "log.h"
+#include "debug/debug.h"
 
 int main() {
     log_init();
     LOGI("Starting MESI simulator - Parallel dot product");
+
+    // Initialize debugger (enabled via SIM_DEBUG=1)
+    dbg_init();
     
     // Inicializar memoria y crear su thread
     Memory mem;
@@ -42,6 +46,9 @@ int main() {
         cache_ptrs[i] = &caches[i];
     bus_init(&bus, cache_ptrs, &mem);
 
+    // Provide context to debugger (bus, caches, PEs, memory)
+    dbg_register_context(&bus, caches, NUM_PES, pes, &mem);
+
     // Create bus thread
     pthread_create(&bus_thread, NULL, bus_thread_func, &bus);
 
@@ -52,6 +59,9 @@ int main() {
     reg_init(&pes[i].rf);  // Initialize register file
         pthread_create(&pe_threads[i], NULL, pe_run, &pes[i]);
     }
+
+    // Start CLI after threads are up so the ready message appears post-start
+    dbg_start_cli();
 
     // Join PE threads
     for (int i = 0; i < NUM_PES; i++)
@@ -95,6 +105,8 @@ int main() {
     for (int i = 0; i < NUM_PES; i++) {
         cache_destroy(&caches[i]);
     }
+
+    dbg_shutdown();
 
     return 0;
 }

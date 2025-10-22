@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "log.h"
+#include "debug/debug.h"
 
 void* pe_run(void* arg) {
     PE* pe = (PE*)arg;
@@ -18,10 +19,10 @@ void* pe_run(void* arg) {
     // PE3: Calcula su producto parcial + reducción final
     
     const char* program_files[] = {
-        "asm/dotprod_pe0.asm",   // PE0: elementos [0-3]
-        "asm/dotprod_pe1.asm",   // PE1: elementos [4-7]
-        "asm/dotprod_pe2.asm",   // PE2: elementos [8-11]
-        "asm/dotprod_pe3.asm"    // PE3: elementos [12-15] + reducción
+        ASM_DOTPROD_PE0_PATH,   // PE0: elementos [0-3]
+        ASM_DOTPROD_PE1_PATH,   // PE1: elementos [4-7]
+        ASM_DOTPROD_PE2_PATH,   // PE2: elementos [8-11]
+        ASM_DOTPROD_PE3_PATH    // PE3: elementos [12-15] + reducción
     };
     
     const char* filename = program_files[pe->id];
@@ -43,14 +44,25 @@ void* pe_run(void* arg) {
     // Ejecutar programa
     pe->rf.pc = 0;
     int running = 1;
-    int max_iterations = 1000;  // Aumentado para permitir programas con loops
     int iterations = 0;
+
+    // Allow overriding the max iterations via environment variable.
+    // SIM_MAX_ITERS: if set to 0 or negative, run without an iteration cap.
+    int max_iterations = 100000;  // default higher to allow longer loops
+    const char* env_max = getenv("SIM_MAX_ITERS");
+    if (env_max) {
+        int val = atoi(env_max);
+        max_iterations = val;
+    }
     
-    while (running && iterations < max_iterations) {
+    while (running && (max_iterations <= 0 || iterations < max_iterations)) {
         if (pe->rf.pc >= (uint64_t)prog->size) {
          LOGE("PE%d: PC out of range (%lu >= %d)", pe->id, pe->rf.pc, prog->size);
             break;
         }
+
+        // Debugger hook: pause/step before executing
+        dbg_before_instruction(pe->id, pe->rf.pc, &prog->code[pe->rf.pc]);
         
         running = execute_instruction(&prog->code[pe->rf.pc], 
                                       &pe->rf, 
@@ -59,8 +71,8 @@ void* pe_run(void* arg) {
         iterations++;
     }
     
-    if (iterations >= max_iterations) {
-    LOGW("PE%d: maximum number of iterations reached (%d)", pe->id, max_iterations);
+    if (max_iterations > 0 && iterations >= max_iterations) {
+        LOGW("PE%d: maximum number of iterations reached (%d)", pe->id, max_iterations);
     }
     
     LOGI("PE%d: execution finished", pe->id);

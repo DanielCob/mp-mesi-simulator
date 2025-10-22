@@ -68,7 +68,7 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     
     // Log only when offset != 0 (unaligned address)
     if (offset != 0) {
-        LOGD("PE%d read: addr=%d base=%d offset=%d", pe_id, addr, block_base, offset);
+        LOGD("PE%d read: addr=0x%X base=0x%X offset=%d", pe_id, addr, block_base, offset);
     }
     
     pthread_mutex_lock(&cache->mutex);
@@ -135,7 +135,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     
     // Log only when offset != 0 (unaligned address)
     if (offset != 0) {
-        LOGD("PE%d write: addr=%d base=%d offset=%d", pe_id, addr, block_base, offset);
+        LOGD("PE%d write: addr=0x%X base=0x%X offset=%d", pe_id, addr, block_base, offset);
     }
     
     pthread_mutex_lock(&cache->mutex);
@@ -282,10 +282,10 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
     
     // ===== WRITEBACK IF THE VICTIM IS IN STATE M =====
     if (victim->state == M) {
-        int victim_addr = (int)(victim->tag * SETS + set_index);
+    int victim_addr = (int)(victim->tag * SETS + set_index);
         cache->stats.bus_writebacks++;
         stats_record_bus_traffic(&cache->stats, 0, BLOCK_SIZE * sizeof(double));
-    LOGD("PE%d eviction: line M addr=%d -> BUS_WB", pe_id, victim_addr);
+    LOGD("PE%d eviction: line M addr=0x%X -> BUS_WB", pe_id, victim_addr);
         bus_broadcast(cache->bus, BUS_WB, victim_addr, pe_id);
     }
     
