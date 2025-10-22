@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include "log.h"
 
-// INICIALIZACIÓN Y LIMPIEZA
+// INIT AND CLEANUP
 
 void mem_init(Memory* mem) {
-    // Inicializar datos a cero
+    // Initialize data to zero
     for (int i = 0; i < MEM_SIZE; i++) {
         mem->data[i] = 0.0;
     }
@@ -32,7 +32,7 @@ void mem_destroy(Memory* mem) {
     pthread_cond_destroy(&mem->current_request.done);
 }
 
-// OPERACIONES DE LECTURA Y ESCRITURA DE BLOQUES
+// BLOCK READ/WRITE OPERATIONS
 
 void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) {
     if (!IS_ALIGNED(addr)) {
@@ -42,12 +42,12 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) 
     
     pthread_mutex_lock(&mem->mutex);
     
-    // Esperar si hay otra solicitud en proceso
+    // Wait if another request is being processed
     while (mem->has_request) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Preparar solicitud de lectura
+    // Prepare read request
     mem->current_request.op = MEM_OP_READ_BLOCK;
     mem->current_request.addr = addr;
     mem->current_request.pe_id = pe_id;
@@ -56,12 +56,12 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) 
     
     pthread_cond_signal(&mem->request_ready);
     
-    // Esperar procesamiento
+    // Wait for processing
     while (!mem->current_request.processed) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Copiar resultado
+    // Copy result
     for (int i = 0; i < BLOCK_SIZE; i++) {
         block[i] = mem->current_request.block[i];
     }
@@ -77,12 +77,12 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
     
     pthread_mutex_lock(&mem->mutex);
     
-    // Esperar si hay otra solicitud en proceso
+    // Wait if another request is being processed
     while (mem->has_request) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Preparar solicitud de escritura
+    // Prepare write request
     mem->current_request.op = MEM_OP_WRITE_BLOCK;
     mem->current_request.addr = addr;
     mem->current_request.pe_id = pe_id;
@@ -94,7 +94,7 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
     
     pthread_cond_signal(&mem->request_ready);
     
-    // Esperar procesamiento
+    // Wait for processing
     while (!mem->current_request.processed) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
@@ -102,7 +102,7 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
     pthread_mutex_unlock(&mem->mutex);
 }
 
-// THREAD DE MEMORIA
+// MEMORY THREAD
 
 void* mem_thread_func(void* arg) {
     Memory* mem = (Memory*)arg;
@@ -111,7 +111,7 @@ void* mem_thread_func(void* arg) {
     while (mem->running) {
         pthread_mutex_lock(&mem->mutex);
         
-        // Esperar por solicitudes
+        // Wait for incoming requests
         while (!mem->has_request && mem->running) {
             pthread_cond_wait(&mem->request_ready, &mem->mutex);
         }
@@ -124,7 +124,7 @@ void* mem_thread_func(void* arg) {
         MemRequest* req = &mem->current_request;
         pthread_mutex_unlock(&mem->mutex);
         
-        // Procesar solicitud (fuera del lock para permitir otras operaciones)
+    // Process request (outside lock to allow parallel ops)
         if (req->op == MEM_OP_READ_BLOCK) {
           LOGD("READ_BLOCK addr=0x%X (%d doubles) from PE%d", 
               req->addr, BLOCK_SIZE, req->pe_id);
@@ -144,7 +144,7 @@ void* mem_thread_func(void* arg) {
         
         pthread_mutex_lock(&mem->mutex);
         
-        // Marcar como procesada y señalizar
+    // Mark as processed and signal
         req->processed = true;
         mem->has_request = false;
         pthread_cond_broadcast(&mem->current_request.done);

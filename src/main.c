@@ -16,12 +16,12 @@ int main() {
 
     // Initialize debugger (enabled via SIM_DEBUG=1)
     dbg_init();
-    
-    // Inicializar memoria y crear su thread
+
+    // Initialize memory and create its thread
     Memory mem;
     mem_init(&mem);
-    
-    // ===== INITIALIZE DOT PRODUCT DATA =====
+
+    // Initialize dot product input data in memory
     dotprod_init_data(&mem);
     
     pthread_t mem_thread;
@@ -33,11 +33,11 @@ int main() {
     pthread_t pe_threads[NUM_PES];
     pthread_t bus_thread;
 
-    // Inicializar cachés
+    // Initialize caches
     for (int i = 0; i < NUM_PES; i++) {
         cache_init(&caches[i]);
         caches[i].bus = &bus;
-    caches[i].pe_id = i;  // Assign PE ID
+        caches[i].pe_id = i;  // Assign PE ID
     }
 
     // Initialize bus with memory reference
@@ -56,7 +56,7 @@ int main() {
     for (int i = 0; i < NUM_PES; i++) {
         pes[i].id = i;
         pes[i].cache = &caches[i];
-    reg_init(&pes[i].rf);  // Initialize register file
+        reg_init(&pes[i].rf);  // Initialize register file
         pthread_create(&pe_threads[i], NULL, pe_run, &pes[i]);
     }
 
@@ -69,8 +69,8 @@ int main() {
 
     LOGI("All PEs finished execution");
 
-    // ===== SHOW DOT PRODUCT RESULTS =====
-    // PEs already did writeback on HALT via the bus, so all modified data is in main memory
+    // Show dot product result. PEs already wrote back modified lines on HALT,
+    // so main memory contains the final values.
     dotprod_print_results(&mem);
 
     // Stop bus and join its thread

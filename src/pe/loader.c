@@ -348,11 +348,11 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             break;
             
         case OP_JNZ:
-            // JNZ label (usa zero_flag implícitamente)
+            // JNZ label (uses zero_flag implicitly)
             {
                 char label_str[MAX_LABEL_NAME];
                 if (sscanf(operands, "%63s", label_str) == 1) {
-                    // No necesita registro, usa zero_flag
+                    // No register needed, uses zero_flag
                     inst->rd = 0;  // No usado, pero mantener por compatibilidad
                     
                     // Intentar parsear como número
@@ -360,10 +360,10 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                     long label_num = strtol(label_str, &endptr, 10);
                     
                     if (*endptr == '\0') {
-                        // Es un número directo
+                        // Direct numeric target
                         inst->label = (int)label_num;
                     } else {
-                        // Es un nombre de label, buscar en la tabla
+                        // It's a label name; look it up in the table
                         int label_line = find_label(label_table, label_str);
                         if (label_line < 0) {
                             LOGE("Label not found: %s", label_str);

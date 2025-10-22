@@ -112,7 +112,7 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     // Prepare line to receive block
     victim->valid = 1;
     victim->tag = tag;
-    victim->state = I;  // Handler del bus cambiará a E o S
+    victim->state = I;  // Bus handler will switch to E or S
 
     // Send BUS_RD and wait for the handler to bring the block
     pthread_mutex_unlock(&cache->mutex);
@@ -150,7 +150,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
         if (set->lines[i].valid && set->lines[i].tag == tag) {
             MESI_State state = set->lines[i].state;
             
-            // ===== CASE 1: HIT IN M =====
+            // Case 1: hit in M
             // Already have exclusive write permission
             if (state == M) {
                 set->lines[i].data[offset] = value;
@@ -161,9 +161,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
-            // ===== CASE 2: HIT IN E =====
-            // We have the block exclusive but not modified
-            // Write and change to M
+            // Case 2: hit in E
+            // We have the block exclusive but not modified; write and switch to M
             else if (state == E) {
                 set->lines[i].data[offset] = value;
                 MESI_State old_state = set->lines[i].state;
@@ -176,9 +175,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
-            // ===== CASE 3: HIT IN S =====
-            // We have a shared copy; we need exclusive permissions
-            // Send BUS_UPGR to invalidate other copies
+            // Case 3: hit in S
+            // We have a shared copy; we need exclusive permissions -> BUS_UPGR
             else if (state == S) {
                 stats_record_write_hit(&cache->stats);
                 cache->stats.bus_upgrades++;
@@ -202,7 +200,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
         }
     }
 
-    // MISS: FETCH LINE WITH BUS_RDX AND WRITE WITH CALLBACK
+    // MISS: fetch line with BUS_RDX and write via callback
     stats_record_write_miss(&cache->stats);
     stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);
     stats_record_invalidation_requested(&cache->stats);  // BUS_RDX may cause invalidations
@@ -241,13 +239,13 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     pthread_mutex_unlock(&cache->mutex);
 }
 
-// VICTIM SELECTION AND REPLACEMENT POLICY
+// Victim selection and replacement policy
 
 CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
     CacheSet* set = &cache->sets[set_index];
     CacheLine* victim = NULL;
 
-    // ===== PRIORITY 1: Reuse invalid line with correct tag =====
+    // Priority 1: reuse invalid line with correct tag
     for (int i = 0; i < WAYS; i++) {
         if (set->lines[i].valid && set->lines[i].state == I) {
             victim = &set->lines[i];
@@ -256,7 +254,7 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
         }
     }
     
-    // ===== PRIORITY 2: Look for invalid line =====
+    // Priority 2: look for invalid line
     for (int i = 0; i < WAYS; i++) {
         if (!set->lines[i].valid) {
             victim = &set->lines[i];
@@ -265,7 +263,7 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
         }
     }
     
-    // ===== PRIORITY 3: LRU policy =====
+    // Priority 3: LRU policy
     for (int i = 0; i < WAYS; i++) {
         if (set->lines[i].lru_bit == 0) {
             victim = &set->lines[i];
@@ -274,18 +272,18 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
         }
     }
     
-    // ===== FALLBACK: Use way 0 =====
+    // Fallback: use way 0
     if (victim == NULL) {
         victim = &set->lines[0];
     LOGD("PE%d victim: way=0 (fallback)", pe_id);
     }
     
-    // ===== WRITEBACK IF THE VICTIM IS IN STATE M =====
+    // Write back if the victim is in state M
     if (victim->state == M) {
-    int victim_addr = (int)(victim->tag * SETS + set_index);
+        int victim_addr = (int)(victim->tag * SETS + set_index);
         cache->stats.bus_writebacks++;
         stats_record_bus_traffic(&cache->stats, 0, BLOCK_SIZE * sizeof(double));
-    LOGD("PE%d eviction: line M addr=0x%X -> BUS_WB", pe_id, victim_addr);
+        LOGD("PE%d eviction: line M addr=0x%X -> BUS_WB", pe_id, victim_addr);
         bus_broadcast(cache->bus, BUS_WB, victim_addr, pe_id);
     }
     
@@ -327,12 +325,12 @@ void cache_set_state(Cache* cache, int addr, MESI_State new_state) {
         MESI_State old_state = line->state;
         line->state = new_state;
         
-        // Registrar transición en estadísticas
+        // Record transition in statistics
         if (old_state != new_state) {
             stats_record_mesi_transition(&cache->stats, old_state, new_state);
         }
         
-        // Registrar invalidación si se cambió de un estado válido a I
+        // Record invalidation if changed from a valid state to I
         if (new_state == I && old_state != I) {
             stats_record_invalidation_received(&cache->stats);
         }

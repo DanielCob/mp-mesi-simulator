@@ -5,33 +5,33 @@
 #include "config.h"
 
 /**
- * @brief Estructura para almacenar transiciones de estados MESI
+ * @brief Structure to store MESI state transitions
  */
 typedef struct {
-    // Transiciones desde Invalid
-    uint64_t I_to_E;  // Invalid → Exclusive (read miss, no compartido)
-    uint64_t I_to_S;  // Invalid → Shared (read miss, compartido)
+    // Transitions from Invalid
+    uint64_t I_to_E;  // Invalid → Exclusive (read miss, not shared)
+    uint64_t I_to_S;  // Invalid → Shared (read miss, shared)
     uint64_t I_to_M;  // Invalid → Modified (write miss)
     
-    // Transiciones desde Exclusive
+    // Transitions from Exclusive
     uint64_t E_to_M;  // Exclusive → Modified (write hit)
-    uint64_t E_to_S;  // Exclusive → Shared (otra caché lee)
-    uint64_t E_to_I;  // Exclusive → Invalid (invalidación)
+    uint64_t E_to_S;  // Exclusive → Shared (another cache reads)
+    uint64_t E_to_I;  // Exclusive → Invalid (invalidation)
     
-    // Transiciones desde Shared
+    // Transitions from Shared
     uint64_t S_to_M;  // Shared → Modified (write hit, upgrade)
-    uint64_t S_to_I;  // Shared → Invalid (invalidación)
+    uint64_t S_to_I;  // Shared → Invalid (invalidation)
     
-    // Transiciones desde Modified
-    uint64_t M_to_S;  // Modified → Shared (otra caché lee, writeback)
-    uint64_t M_to_I;  // Modified → Invalid (invalidación + writeback)
+    // Transitions from Modified
+    uint64_t M_to_S;  // Modified → Shared (another cache reads, writeback)
+    uint64_t M_to_I;  // Modified → Invalid (invalidation + writeback)
 } MESITransitions;
 
 /**
- * @brief Estructura para estadísticas de caché por PE
+ * @brief Per-PE cache statistics
  */
 typedef struct {
-    // Cache hits y misses
+    // Cache hits and misses
     uint64_t read_hits;
     uint64_t read_misses;
     uint64_t write_hits;
@@ -42,71 +42,71 @@ typedef struct {
     uint64_t invalidations_sent;      // Actual broadcast invalidations sent by this PE (bus confirmed)
     uint64_t invalidations_received;  // Broadcast invalidations received by this PE
     
-    // Operaciones de lectura/escritura
+    // Read/write operations
     uint64_t total_reads;
     uint64_t total_writes;
     
-    // Tráfico del bus (en bloques)
-    uint64_t bus_reads;       // BusRd enviados
-    uint64_t bus_read_x;      // BusRdX enviados
-    uint64_t bus_upgrades;    // BusUpgr enviados
-    uint64_t bus_writebacks;  // Writebacks a memoria
+    // Bus traffic (in blocks)
+    uint64_t bus_reads;       // BusRd issued
+    uint64_t bus_read_x;      // BusRdX issued
+    uint64_t bus_upgrades;    // BusUpgr issued
+    uint64_t bus_writebacks;  // Writebacks to memory
     
-    // Transiciones MESI
+    // MESI transitions
     MESITransitions transitions;
     
-    // Bytes transferidos
+    // Bytes transferred
     uint64_t bytes_read_from_bus;
     uint64_t bytes_written_to_bus;
     
 } CacheStats;
 
 /**
- * @brief Inicializa las estadísticas de caché
- * 
- * @param stats Puntero a la estructura de estadísticas
+ * @brief Initialize cache statistics
+ *
+ * @param stats Pointer to stats structure
  */
 void stats_init(CacheStats* stats);
 
 /**
- * @brief Registra un read hit
- * 
- * @param stats Puntero a las estadísticas
+ * @brief Record a read hit
+ *
+ * @param stats Pointer to stats
  */
 void stats_record_read_hit(CacheStats* stats);
 
 /**
- * @brief Registra un read miss
- * 
- * @param stats Puntero a las estadísticas
+ * @brief Record a read miss
+ *
+ * @param stats Pointer to stats
  */
 void stats_record_read_miss(CacheStats* stats);
 
 /**
- * @brief Registra un write hit
- * 
- * @param stats Puntero a las estadísticas
+ * @brief Record a write hit
+ *
+ * @param stats Pointer to stats
  */
 void stats_record_write_hit(CacheStats* stats);
 
 /**
- * @brief Registra un write miss
- * 
- * @param stats Puntero a las estadísticas
+ * @brief Record a write miss
+ *
+ * @param stats Pointer to stats
  */
 void stats_record_write_miss(CacheStats* stats);
 
 /**
- * @brief Registra una invalidación recibida
- * 
- * @param stats Puntero a las estadísticas
+ * @brief Record a received invalidation
+ *
+ * @param stats Pointer to stats
  */
 void stats_record_invalidation_received(CacheStats* stats);
 
 /**
- * @brief Registra una invalidación enviada
- * 
- * @param stats Puntero a las estadísticas
+ * @brief Record a sent invalidation
+ *
+ * @param stats Pointer to stats
  */
 void stats_record_invalidation_sent(CacheStats* stats);
 
@@ -114,36 +114,36 @@ void stats_record_invalidation_sent(CacheStats* stats);
 void stats_record_invalidation_requested(CacheStats* stats);
 
 /**
- * @brief Registra tráfico del bus (en bytes)
- * 
- * @param stats Puntero a las estadísticas
- * @param bytes_read Bytes leídos del bus
- * @param bytes_written Bytes escritos al bus
+ * @brief Record bus traffic (bytes)
+ *
+ * @param stats Pointer to stats
+ * @param bytes_read Bytes read from bus
+ * @param bytes_written Bytes written to bus
  */
 void stats_record_bus_traffic(CacheStats* stats, uint64_t bytes_read, uint64_t bytes_written);
 
 /**
- * @brief Registra una transición de estado MESI
- * 
- * @param stats Puntero a las estadísticas
- * @param from Estado origen (0=I, 1=E, 2=S, 3=M)
- * @param to Estado destino (0=I, 1=E, 2=S, 3=M)
+ * @brief Record a MESI state transition
+ *
+ * @param stats Pointer to stats
+ * @param from Source state (I/E/S/M)
+ * @param to Destination state (I/E/S/M)
  */
 void stats_record_mesi_transition(CacheStats* stats, MESI_State from, MESI_State to);
 
 /**
- * @brief Imprime las estadísticas de un PE
- * 
- * @param stats Puntero a las estadísticas
- * @param pe_id ID del PE
+ * @brief Print statistics for one PE
+ *
+ * @param stats Pointer to stats
+ * @param pe_id PE id
  */
 void stats_print(const CacheStats* stats, int pe_id);
 
 /**
- * @brief Imprime un resumen comparativo de todos los PEs
- * 
- * @param stats_array Array de estadísticas de todos los PEs
- * @param num_pes Número de PEs
+ * @brief Print a comparative summary for all PEs
+ *
+ * @param stats_array Array of stats (one per PE)
+ * @param num_pes Number of PEs
  */
 void stats_print_summary(const CacheStats* stats_array, int num_pes);
 

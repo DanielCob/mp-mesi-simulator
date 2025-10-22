@@ -13,16 +13,16 @@ void* pe_run(void* arg) {
     PE* pe = (PE*)arg;
     LOGD("PE%d: starting thread", pe->id);
     
-    // ===== CARGAR PROGRAMA DESDE ARCHIVO =====
-    // Cada PE ejecuta su parte del producto punto paralelo
-    // PE0-PE2: Calculan productos parciales
-    // PE3: Calcula su producto parcial + reducción final
+    // ===== LOAD PROGRAM FROM FILE =====
+    // Each PE executes its portion of the parallel dot product
+    // PE0-PE2: compute partial products
+    // PE3: compute partial product + final reduction
     
     const char* program_files[] = {
-        ASM_DOTPROD_PE0_PATH,   // PE0: elementos [0-3]
-        ASM_DOTPROD_PE1_PATH,   // PE1: elementos [4-7]
-        ASM_DOTPROD_PE2_PATH,   // PE2: elementos [8-11]
-        ASM_DOTPROD_PE3_PATH    // PE3: elementos [12-15] + reducción
+    ASM_DOTPROD_PE0_PATH,   // PE0: elements [0-3]
+    ASM_DOTPROD_PE1_PATH,   // PE1: elements [4-7]
+    ASM_DOTPROD_PE2_PATH,   // PE2: elements [8-11]
+    ASM_DOTPROD_PE3_PATH    // PE3: elements [12-15] + reduction
     };
     
     const char* filename = program_files[pe->id];
@@ -41,7 +41,7 @@ void* pe_run(void* arg) {
     
     LOGI("PE%d: starting execution", pe->id);
     
-    // Ejecutar programa
+    // Run program
     pe->rf.pc = 0;
     int running = 1;
     int iterations = 0;
@@ -78,10 +78,10 @@ void* pe_run(void* arg) {
     LOGI("PE%d: execution finished", pe->id);
     LOGI("PE%d: iterations executed=%d", pe->id, iterations);
     
-    // Imprimir estado final de registros
+    // Print final register state
     reg_print(&pe->rf, pe->id);
     
-    // Liberar memoria del programa
+    // Free program memory
     free_program(prog);
     
     LOGD("PE%d: done", pe->id);

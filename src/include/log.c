@@ -15,8 +15,8 @@ typedef enum {
 } color_mode_t;
 
 static color_mode_t COLOR_MODE = COLOR_AUTO;
-static bool NO_COLOR_ENV = false; // Respeta estándar NO_COLOR
-static pthread_mutex_t LOG_MUTEX = PTHREAD_MUTEX_INITIALIZER; // Serializa la salida
+static bool NO_COLOR_ENV = false; // Honor NO_COLOR standard
+static pthread_mutex_t LOG_MUTEX = PTHREAD_MUTEX_INITIALIZER; // Serialize output
 
 static log_level_t parse_level(const char* s) {
     if (!s) return LOG_INFO;
@@ -53,7 +53,7 @@ void log_init(void) {
     CURRENT_LEVEL = parse_level(env);
     const char* cenv = getenv("LOG_COLOR");
     COLOR_MODE = parse_color_mode(cenv);
-    NO_COLOR_ENV = getenv("NO_COLOR") != NULL; // Si está definida, desactiva colores
+    NO_COLOR_ENV = getenv("NO_COLOR") != NULL; // If defined, disable colors
 }
 
 void log_set_level(log_level_t level) { CURRENT_LEVEL = level; }
@@ -71,17 +71,17 @@ void log_log(log_level_t level, const char* module, const char* fmt, ...) {
     const char* module_color = NULL;
     if (should_color(out)) {
         switch (level) {
-            case LOG_ERROR: level_color = "\x1b[1;31m"; break; // rojo intenso
-            case LOG_WARN:  level_color = "\x1b[1;33m"; break; // amarillo
-            case LOG_INFO:  level_color = "\x1b[1;32m"; break; // verde
-            case LOG_DEBUG: level_color = "\x1b[1;36m"; break; // cian
+            case LOG_ERROR: level_color = "\x1b[1;31m"; break; // bright red
+            case LOG_WARN:  level_color = "\x1b[1;33m"; break; // yellow
+            case LOG_INFO:  level_color = "\x1b[1;32m"; break; // green
+            case LOG_DEBUG: level_color = "\x1b[1;36m"; break; // cyan
             default: level_color = NULL; break;
         }
-        module_color = "\x1b[0;34m"; // azul para el módulo
+        module_color = "\x1b[0;34m"; // blue for module tag
     }
 
     pthread_mutex_lock(&LOG_MUTEX);
-    // Formato minimalista, en español, sin ASCII decorativo
+    // Minimal format, no decorative ASCII
     if (level_color && module_color) {
         fprintf(out, "%s[%s]%s%s[%s]%s ", level_color, lvl, reset, module_color, module, reset);
     } else {
@@ -93,7 +93,7 @@ void log_log(log_level_t level, const char* module, const char* fmt, ...) {
     vfprintf(out, fmt, args);
     va_end(args);
 
-    // Garantizar salto de línea
+    // Ensure newline at end
     size_t len = strlen(fmt);
     if (len == 0 || fmt[len-1] != '\n') {
         fputc('\n', out);
@@ -103,7 +103,7 @@ void log_log(log_level_t level, const char* module, const char* fmt, ...) {
     pthread_mutex_unlock(&LOG_MUTEX);
 }
 
-// ============ Helpers de color públicos ============
+// ============ Public color helpers ============
 static const char* ansi_reset = "\x1b[0m";
 static const char* ansi_bold = "\x1b[1m";
 static const char* ansi_blue = "\x1b[34m";

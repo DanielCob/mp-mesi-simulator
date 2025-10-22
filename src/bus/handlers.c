@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "log.h"
 
-// REGISTRO DE HANDLERS
+// HANDLER REGISTRATION
 
 void bus_register_handlers(Bus* bus) {
     bus->handlers[BUS_RD]   = handle_busrd;
@@ -58,7 +58,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
 
     // No cache has the data, read from memory
     if (!data_found) {
-           LOGD("Read miss: reading block from memory addr=0x%X", addr);
+        LOGD("Read miss: reading block from memory addr=0x%X", addr);
         double block[BLOCK_SIZE];
         mem_read_block(bus->memory, addr, block, src_pe);
         LOGD("Memory returns block [%.2f, %.2f, %.2f, %.2f]", 
@@ -122,13 +122,13 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
         for (int k = 0; k < invalidations_count; k++) {
             stats_record_invalidation_sent(&requestor->stats);
         }
-    // Account additional control per invalidated cache
-    bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
+        // Account additional control per invalidated cache
+        bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
     }
     
     // No cache has the data, read from memory
     if (!data_found) {
-           LOGD("Write miss: reading block from memory addr=0x%X", addr);
+        LOGD("Write miss: reading block from memory addr=0x%X", addr);
         double block[BLOCK_SIZE];
         mem_read_block(bus->memory, addr, block, src_pe);
         LOGD("Memory returns block [%.2f, %.2f, %.2f, %.2f]", 
@@ -162,11 +162,11 @@ void handle_busupgr(Bus* bus, int addr, int src_pe) {
         for (int k = 0; k < invalidations_count; k++) {
             stats_record_invalidation_sent(&requestor->stats);
         }
-    // Account additional control per invalidated cache
-    bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
+        // Account additional control per invalidated cache
+        bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
     }
 
-    cache_set_state(requestor, addr, M);  // S->M (registra transición)
+    cache_set_state(requestor, addr, M);  // S->M (record transition)
 }
 
 // HANDLER: BUS_WB (Writeback to memory)
@@ -177,10 +177,8 @@ void handle_buswb(Bus* bus, int addr, int src_pe) {
     if (cache_get_state(writer, addr) == M) {
         double block[BLOCK_SIZE];
         cache_get_block(writer, addr, block);
-       LOGD("Write block to memory addr=%d [%.2f, %.2f, %.2f, %.2f]", 
-           addr, block[0], block[1], block[2], block[3]);
-       LOGD("Write block to memory addr=0x%X [%.2f, %.2f, %.2f, %.2f]", 
-           addr, block[0], block[1], block[2], block[3]);
+        LOGD("Write block to memory addr=0x%X [%.2f, %.2f, %.2f, %.2f]", 
+             addr, block[0], block[1], block[2], block[3]);
         mem_write_block(bus->memory, addr, block, src_pe);
     }
     
