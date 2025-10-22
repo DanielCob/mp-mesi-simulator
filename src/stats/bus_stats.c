@@ -46,6 +46,16 @@ void bus_stats_record_transfer(BusStats* stats, int bytes) {
     stats->bytes_transferred += bytes;
 }
 
+void bus_stats_record_data_transfer(BusStats* stats, int bytes) {
+    stats->bytes_data += bytes;
+    stats->bytes_transferred += bytes;
+}
+
+void bus_stats_record_control_transfer(BusStats* stats, int bytes) {
+    stats->bytes_control += bytes;
+    stats->bytes_transferred += bytes;
+}
+
 void bus_stats_print(const BusStats* stats) {
     printf("\n");
     printf("╔════════════════════════════════════════════════════════════════╗\n");
@@ -68,12 +78,18 @@ void bus_stats_print(const BusStats* stats) {
     
     double traffic_kb = stats->bytes_transferred / 1024.0;
     double traffic_mb = traffic_kb / 1024.0;
+    double data_kb = stats->bytes_data / 1024.0;
+    double control_kb = stats->bytes_control / 1024.0;
     
     printf("║  📊 TRÁFICO                                                   ║\n");
     printf("╟────────────────────────────────────────────────────────────────╢\n");
-    printf("║    - Bytes transferidos:  %10lu                        ║\n", stats->bytes_transferred);
-    printf("║    - Tráfico (KB):        %10.2f                        ║\n", traffic_kb);
-    printf("║    - Tráfico (MB):        %10.6f                        ║\n", traffic_mb);
+    printf("║    - Bytes de datos:      %10lu (%.2f KB)           ║\n", 
+           stats->bytes_data, data_kb);
+    printf("║    - Bytes de control:    %10lu (%.2f KB)           ║\n", 
+           stats->bytes_control, control_kb);
+    printf("║    - Total transferido:   %10lu (%.2f KB)           ║\n", 
+           stats->bytes_transferred, traffic_kb);
+    printf("║    - Tráfico total (MB):  %10.6f                        ║\n", traffic_mb);
     printf("║                                                                ║\n");
     
     printf("║  🔢 USO DEL BUS POR PE                                        ║\n");

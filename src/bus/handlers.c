@@ -29,8 +29,8 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
                 printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK y pasando a S\n", i);
                 mem_write_block(bus->memory, addr, block, src_pe);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(cache, addr, S);
-                cache_set_state(requestor, addr, S);
+                cache_set_state(cache, addr, S);  // M->S (registra transición)
+                cache_set_state(requestor, addr, S);  // I->S (registra transición)
                 data_found = 1;
                 return;
             } else if (state == E) {
@@ -38,8 +38,8 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
                 cache_get_block(cache, addr, block);
                 printf("  [Cache PE%d] Tiene bloque en E, pasando a S\n", i);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(cache, addr, S);
-                cache_set_state(requestor, addr, S);
+                cache_set_state(cache, addr, S);  // E->S (registra transición)
+                cache_set_state(requestor, addr, S);  // I->S (registra transición)
                 data_found = 1;
                 return;
             } else if (state == S && !data_found) {
@@ -47,7 +47,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
                 cache_get_block(cache, addr, block);
                 printf("  [Cache PE%d] Tiene bloque en S, compartiendo\n", i);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(requestor, addr, S);
+                cache_set_state(requestor, addr, S);  // I->S (registra transición)
                 data_found = 1;
                 return;
             }
@@ -62,7 +62,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
         printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
                block[0], block[1], block[2], block[3]);
         cache_set_block(requestor, addr, block);
-        cache_set_state(requestor, addr, E);
+        cache_set_state(requestor, addr, E);  // I->E (registra transición)
     }
 }
 
@@ -84,8 +84,8 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
                 printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK e INVALIDANDO\n", i);
                 mem_write_block(bus->memory, addr, block, src_pe);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(cache, addr, I);
-                cache_set_state(requestor, addr, M);
+                cache_set_state(cache, addr, I);  // M->I (registra transición)
+                cache_set_state(requestor, addr, M);  // I->M (registra transición)
                 data_found = 1;
                 invalidations_count++;
                 return;
@@ -95,10 +95,10 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
                     cache_get_block(cache, addr, block);
                     printf("  [Cache PE%d] Tiene bloque en %c, proveyendo e INVALIDANDO\n", i, state == E ? 'E' : 'S');
                     cache_set_block(requestor, addr, block);
-                    cache_set_state(requestor, addr, M);
+                    cache_set_state(requestor, addr, M);  // I->M (registra transición)
                     data_found = 1;
                 }
-                cache_set_state(cache, addr, I);
+                cache_set_state(cache, addr, I);  // E->I o S->I (registra transición)
                 invalidations_count++;
             }
         }
@@ -116,7 +116,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
         printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
                block[0], block[1], block[2], block[3]);
         cache_set_block(requestor, addr, block);
-        cache_set_state(requestor, addr, M);
+        cache_set_state(requestor, addr, M);  // I->M (registra transición)
     }
 }
 
@@ -124,6 +124,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
 
 void handle_busupgr(Bus* bus, int addr, int src_pe) {
     Cache* requestor = bus->caches[src_pe];
+    int invalidations_count = 0;
     
     for (int i = 0; i < NUM_PES; i++) {
         if (i != src_pe) {
@@ -132,12 +133,17 @@ void handle_busupgr(Bus* bus, int addr, int src_pe) {
             
             if (state == S) {
                 printf("  [Cache PE%d] Invalidando línea en S\n", i);
-                cache_set_state(cache, addr, I);
+                cache_set_state(cache, addr, I);  // S->I (registra transición)
+                invalidations_count++;
             }
         }
     }
 
-    cache_set_state(requestor, addr, M);
+    if (invalidations_count > 0) {
+        bus_stats_record_invalidations(&bus->stats, invalidations_count);
+    }
+
+    cache_set_state(requestor, addr, M);  // S->M (registra transición)
 }
 
 // HANDLER: BUS_WB (Writeback a memoria)

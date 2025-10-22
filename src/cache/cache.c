@@ -15,8 +15,13 @@ typedef struct {
 
 static void write_callback(void* context) {
     WriteCallbackContext* ctx = (WriteCallbackContext*)context;
+    
+    // Escribir el valor en el bloque
     ctx->victim->data[ctx->offset] = ctx->value;
+    
+    // Cambiar estado a Modified (I->M ya se registró en handler)
     ctx->victim->state = M;
+    
     printf("[CALLBACK PE%d] WRITE completado -> way %d, offset %d, valor=%.2f (estado M)\n", 
            ctx->pe_id, ctx->victim_way, ctx->offset, ctx->value);
 }
@@ -178,6 +183,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
             else if (state == S) {
                 stats_record_write_hit(&cache->stats);
                 cache->stats.bus_upgrades++;
+                stats_record_invalidation_sent(&cache->stats);  // Enviamos invalidaciones
                 printf("[PE%d] WRITE HIT en set %d (way %d, estado S->M, offset %d, enviando BUS_UPGR) -> escribiendo %.2f\n", 
                        pe_id, set_index, i, offset, value);
                 
@@ -200,6 +206,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     // MISS: TRAER LÍNEA CON BUS_RDX Y ESCRIBIR CON CALLBACK
     stats_record_write_miss(&cache->stats);
     stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);
+    stats_record_invalidation_sent(&cache->stats);  // BUS_RDX puede causar invalidaciones
     printf("[PE%d] WRITE MISS en set %d, enviando BUS_RDX -> valor a escribir=%.2f\n", 
            pe_id, set_index, value);
 

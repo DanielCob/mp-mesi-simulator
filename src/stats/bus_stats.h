@@ -18,7 +18,11 @@ typedef struct {
     
     // Tráfico total
     uint64_t total_transactions;   // Total de transacciones
-    uint64_t bytes_transferred;    // Bytes transferidos por el bus
+    uint64_t bytes_transferred;    // Bytes transferidos por el bus (total)
+    
+    // Desglose de tráfico
+    uint64_t bytes_data;           // Bytes de datos (bloques de caché)
+    uint64_t bytes_control;        // Bytes de señales de control (invalidaciones, etc.)
     
     // Ocupación del bus (ciclos simulados)
     uint64_t busy_cycles;          // Ciclos que el bus estuvo ocupado
@@ -62,6 +66,16 @@ void bus_stats_record_invalidations(BusStats* stats, int count);
  * @brief Registra bytes transferidos
  */
 void bus_stats_record_transfer(BusStats* stats, int bytes);
+
+/**
+ * @brief Registra bytes de datos transferidos (bloques de caché)
+ */
+void bus_stats_record_data_transfer(BusStats* stats, int bytes);
+
+/**
+ * @brief Registra bytes de control transferidos (señales, invalidaciones)
+ */
+void bus_stats_record_control_transfer(BusStats* stats, int bytes);
 
 /**
  * @brief Imprime las estadísticas del bus
