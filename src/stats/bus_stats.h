@@ -24,10 +24,6 @@ typedef struct {
     uint64_t bytes_data;           // Bytes de datos (bloques de caché)
     uint64_t bytes_control;        // Bytes de señales de control (invalidaciones, etc.)
     
-    // Ocupación del bus (ciclos simulados)
-    uint64_t busy_cycles;          // Ciclos que el bus estuvo ocupado
-    uint64_t idle_cycles;          // Ciclos que el bus estuvo idle
-    
     // Conteo por PE (quién usa más el bus)
     uint64_t transactions_per_pe[4];
 } BusStats;
@@ -61,11 +57,6 @@ void bus_stats_record_bus_wb(BusStats* stats, int pe_id);
  * @brief Registra invalidaciones enviadas
  */
 void bus_stats_record_invalidations(BusStats* stats, int count);
-
-/**
- * @brief Registra bytes transferidos
- */
-void bus_stats_record_transfer(BusStats* stats, int bytes);
 
 /**
  * @brief Registra bytes de datos transferidos (bloques de caché)

@@ -42,10 +42,6 @@ void bus_stats_record_invalidations(BusStats* stats, int count) {
     stats->invalidations_sent += count;
 }
 
-void bus_stats_record_transfer(BusStats* stats, int bytes) {
-    stats->bytes_transferred += bytes;
-}
-
 void bus_stats_record_data_transfer(BusStats* stats, int bytes) {
     stats->bytes_data += bytes;
     stats->bytes_transferred += bytes;
