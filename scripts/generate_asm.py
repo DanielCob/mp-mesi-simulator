@@ -24,12 +24,25 @@ def read_config_h():
             if match:
                 config['NUM_PES'] = int(match.group(1))
             
-            # Buscar otras constantes
-            for var in ['VECTOR_A_BASE', 'VECTOR_B_BASE', 'RESULTS_BASE', 
-                        'FLAGS_BASE', 'BLOCK_SIZE', 'CONSTANTS_BASE', 'FINAL_RESULT_ADDR']:
+            # Buscar constantes básicas
+            for var in ['SHARED_CONFIG_ADDR', 'RESULTS_ADDR', 'FLAGS_ADDR', 'FINAL_RESULT_ADDR']:
                 match = re.search(rf'#define\s+{var}\s+(\d+)', content)
                 if match:
                     config[var] = int(match.group(1))
+            
+            # Buscar offsets dentro de SHARED_CONFIG
+            for var in ['CFG_VECTOR_A_ADDR', 'CFG_VECTOR_B_ADDR', 'CFG_RESULTS_ADDR',
+                        'CFG_FLAGS_ADDR', 'CFG_FINAL_RESULT_ADDR', 'CFG_NUM_PES_ADDR', 
+                        'CFG_BARRIER_CHECK_ADDR', 'CFG_PE_START_ADDR']:
+                match = re.search(rf'#define\s+{var}\s+(\d+)', content)
+                if match:
+                    config[var] = int(match.group(1))
+            
+            # Calcular SEGMENT_SIZE para workers y master
+            if 'VECTOR_SIZE' in config and 'NUM_PES' in config:
+                config['SEGMENT_SIZE_WORKER'] = config['VECTOR_SIZE'] // config['NUM_PES']
+                config['RESIDUE'] = config['VECTOR_SIZE'] % config['NUM_PES']
+                config['SEGMENT_SIZE_MASTER'] = config['SEGMENT_SIZE_WORKER'] + config['RESIDUE']
             
     except FileNotFoundError:
         print("Error: No se encontró src/include/config.h")
@@ -43,181 +56,233 @@ config = read_config_h()
 if config:
     VECTOR_SIZE = config['VECTOR_SIZE']
     NUM_PES = config['NUM_PES']
-    VECTOR_A_BASE = config.get('VECTOR_A_BASE', 0)
-    VECTOR_B_BASE = config.get('VECTOR_B_BASE', 100)
-    RESULTS_BASE = config.get('RESULTS_BASE', 200)
-    FLAGS_BASE = config.get('FLAGS_BASE', 220)
-    BLOCK_SIZE = config.get('BLOCK_SIZE', 4)
-    CONSTANTS_BASE = config.get('CONSTANTS_BASE', 232)
-    FINAL_RESULT_ADDR = config.get('FINAL_RESULT_ADDR', 216)
+    SEGMENT_SIZE_WORKER = config['SEGMENT_SIZE_WORKER']
+    SEGMENT_SIZE_MASTER = config['SEGMENT_SIZE_MASTER']
+    RESIDUE = config['RESIDUE']
+    
+    # Nuevo layout: shared config area
+    SHARED_CONFIG_ADDR = config.get('SHARED_CONFIG_ADDR', 0)
+    CFG_VECTOR_A_ADDR = config.get('CFG_VECTOR_A_ADDR', 0)
+    CFG_VECTOR_B_ADDR = config.get('CFG_VECTOR_B_ADDR', 1)
+    CFG_RESULTS_ADDR = config.get('CFG_RESULTS_ADDR', 2)
+    CFG_FLAGS_ADDR = config.get('CFG_FLAGS_ADDR', 3)
+    CFG_FINAL_RESULT_ADDR = config.get('CFG_FINAL_RESULT_ADDR', 4)
+    CFG_NUM_PES_ADDR = config.get('CFG_NUM_PES_ADDR', 5)
+    CFG_BARRIER_CHECK_ADDR = config.get('CFG_BARRIER_CHECK_ADDR', 6)
+    CFG_PE_START_ADDR = config.get('CFG_PE_START_ADDR', 8)
+    
+    # Áreas de sincronización y resultados (compactas)
+    RESULTS_ADDR = config.get('RESULTS_ADDR', 16)
+    FLAGS_ADDR = config.get('FLAGS_ADDR', 20)
+    FINAL_RESULT_ADDR = config.get('FINAL_RESULT_ADDR', 24)
 else:
     # Valores por defecto
     VECTOR_SIZE = 16
     NUM_PES = 4
-    VECTOR_A_BASE = 0
-    VECTOR_B_BASE = 100
-    RESULTS_BASE = 200
-    FLAGS_BASE = 220
-    BLOCK_SIZE = 4
-    CONSTANTS_BASE = 232
-    FINAL_RESULT_ADDR = 216
-
-SEGMENT_SIZE = VECTOR_SIZE // NUM_PES
+    SEGMENT_SIZE_WORKER = VECTOR_SIZE // NUM_PES
+    RESIDUE = VECTOR_SIZE % NUM_PES
+    SEGMENT_SIZE_MASTER = SEGMENT_SIZE_WORKER + RESIDUE
+    
+    SHARED_CONFIG_ADDR = 0
+    CFG_VECTOR_A_ADDR = 0
+    CFG_VECTOR_B_ADDR = 1
+    CFG_RESULTS_ADDR = 2
+    CFG_FLAGS_ADDR = 3
+    CFG_FINAL_RESULT_ADDR = 4
+    CFG_NUM_PES_ADDR = 5
+    CFG_BARRIER_CHECK_ADDR = 6
+    CFG_PE_START_ADDR = 8
+    
+    RESULTS_ADDR = 16
+    FLAGS_ADDR = 20
+    FINAL_RESULT_ADDR = 24
 
 def generate_worker_pe(pe_id):
-    """Genera código assembly para PE trabajador (PE0-PE2) con LOOP"""
+    """Genera código assembly GENÉRICO para PE trabajador (PE0-PE2)
+    CARGA TODOS LOS PARÁMETROS DESDE SHARED_CONFIG EN MEMORIA"""
     
-    start_idx = pe_id * SEGMENT_SIZE
-    result_addr = RESULTS_BASE + pe_id * BLOCK_SIZE
-    flag_addr = FLAGS_BASE + pe_id * BLOCK_SIZE
+    # Calcular offset dentro de CFG_PE para este PE
+    # CFG_PE(pe, 0) = CFG_PE_START_ADDR + pe*2 (start_index)
+    # CFG_PE(pe, 1) = CFG_PE_START_ADDR + pe*2 + 1 (segment_size)
+    cfg_start_idx_addr = CFG_PE_START_ADDR + pe_id * 2
+    cfg_segment_size_addr = CFG_PE_START_ADDR + pe_id * 2 + 1
     
     code = f"""# ============================================================================
-# Producto Punto Paralelo - PE{pe_id} (GENERADO AUTOMÁTICAMENTE CON LOOP)
+# Producto Punto Paralelo - PE{pe_id} (CÓDIGO GENÉRICO REUTILIZABLE)
 # ============================================================================
-# Segmento: elementos [{start_idx} to {start_idx + SEGMENT_SIZE - 1}]
-# Configuración: VECTOR_SIZE={VECTOR_SIZE}, SEGMENT_SIZE={SEGMENT_SIZE}
+# Este código carga todas las constantes desde SHARED_CONFIG (addr 0-15)
+# NO requiere regeneración al cambiar VECTOR_SIZE, NUM_PES, etc.
+# Solo recompilar para actualizar el área de configuración compartida
+#
+# SHARED_CONFIG Layout:
+#   [0] = VECTOR_A_ADDR
+#   [1] = VECTOR_B_ADDR
+#   [2] = RESULTS_ADDR
+#   [3] = FLAGS_ADDR
+#   [8+{pe_id}*2] = PE{pe_id}_START_INDEX
+#   [9+{pe_id}*2] = PE{pe_id}_SEGMENT_SIZE
 # ============================================================================
 
 # ============================================================================
-# Inicialización
+# CARGA DE CONSTANTES DESDE SHARED_CONFIG
+# ============================================================================
+
+# Cargar VECTOR_A_ADDR (addr 0)
+MOV R4, {float(CFG_VECTOR_A_ADDR)}
+LOAD R5, [R4]        # R5 = VECTOR_A_ADDR (para cálculo de direcciones)
+
+# Cargar VECTOR_B_ADDR (addr 1)
+MOV R4, {float(CFG_VECTOR_B_ADDR)}
+LOAD R2, [R4]        # R2 = VECTOR_B_ADDR
+
+# Cargar start_index para PE{pe_id} (addr {cfg_start_idx_addr})
+MOV R4, {float(cfg_start_idx_addr)}
+LOAD R1, [R4]        # R1 = start_index (índice, no dirección)
+
+# Cargar segment_size para PE{pe_id} (addr {cfg_segment_size_addr})
+MOV R4, {float(cfg_segment_size_addr)}
+LOAD R3, [R4]        # R3 = segment_size (contador del loop)
+
+# ============================================================================
+# INICIALIZACIÓN
 # ============================================================================
 MOV R0, 0.0         # R0 = acumulador (resultado parcial)
-MOV R1, {float(start_idx)}         # R1 = índice de elemento actual
-MOV R2, {float(VECTOR_B_BASE)}       # R2 = base de vector B
-MOV R3, {float(SEGMENT_SIZE)}        # R3 = contador del loop (SEGMENT_SIZE)
 
 # ============================================================================
-# LOOP: Procesar SEGMENT_SIZE elementos
+# LOOP: Procesar segment_size elementos
 # ============================================================================
 LOOP_START:
-# Cargar A[i] usando addressing indirecto
-LOAD R4, [R1]       # R4 = A[i]
-
-# Calcular dirección de B[i] = VECTOR_B_BASE + i
-FADD R5, R2, R1     # R5 = VECTOR_B_BASE + i
-LOAD R6, [R5]       # R6 = B[i]
-
-# Multiplicar A[i] * B[i]
-FMUL R7, R4, R6     # R7 = A[i] * B[i]
-
-# Acumular resultado
-FADD R0, R0, R7     # acum += A[i] * B[i]
-
-# Incrementar índice
+FADD R4, R5, R1     # R4 = VECTOR_A_ADDR + i (dirección de A[i])
+LOAD R4, [R4]       # R4 = A[i]
+FADD R6, R2, R1     # R6 = VECTOR_B_ADDR + i
+LOAD R6, [R6]       # R6 = B[i]
+FMUL R4, R4, R6     # R4 = A[i] * B[i]
+FADD R0, R0, R4     # acumulador += producto
 INC R1              # i++
-
-# Decrementar contador y verificar si continuar
 DEC R3              # contador--
-JNZ LOOP_START      # Si R3 != 0, repetir loop
+JNZ LOOP_START      # Repetir si contador != 0
 
 # ============================================================================
-# Guardar resultado parcial
+# GUARDAR RESULTADO Y SEÑALIZAR
 # ============================================================================
-MOV R5, {float(result_addr)}       # RESULTS_BASE + {pe_id}*BLOCK_SIZE
-STORE R0, [R5]      # Guardar resultado parcial de PE{pe_id}
+# Resultado parcial: RESULTS_ADDR + pe_id (direccionamiento directo)
+MOV R5, {float(RESULTS_ADDR + pe_id)}
+STORE R0, [R5]      # Guardar resultado parcial
 
-# ============================================================================
-# Señalizar finalización (barrier)
-# ============================================================================
+# Flag de sincronización: FLAGS_ADDR + pe_id
+MOV R7, {float(FLAGS_ADDR + pe_id)}
 MOV R6, 1.0         # Flag value
-MOV R7, {float(flag_addr)}       # FLAGS_BASE + {pe_id}*BLOCK_SIZE
-STORE R6, [R7]      # Flag PE{pe_id} = 1.0
+STORE R6, [R7]      # Señalizar finalización
 
 HALT
 """
     return code
 
 def generate_master_pe(pe_id=3):
-    """Genera código assembly para PE master (PE3) que hace reducción con LOOP"""
+    """Genera código assembly GENÉRICO para PE master (PE3)
+    CARGA CONSTANTES DESDE SHARED_CONFIG
+    USA MOV IMMEDIATE para BARRIER_CHECK y NUM_PES (optimización anti-thrashing)"""
     
-    start_idx = pe_id * SEGMENT_SIZE
-    result_addr = RESULTS_BASE + pe_id * BLOCK_SIZE
+    cfg_start_idx_addr = CFG_PE_START_ADDR + pe_id * 2
+    cfg_segment_size_addr = CFG_PE_START_ADDR + pe_id * 2 + 1
+    
+    # Valores para MOV immediate (optimizados para evitar cache thrashing)
+    barrier_check_value = -(NUM_PES - 1)  # e.g., -3.0 para NUM_PES=4
+    num_pes_value = float(NUM_PES)
     
     code = f"""# ============================================================================
-# Producto Punto Paralelo - PE{pe_id} (MASTER - GENERADO CON LOOP)
+# Producto Punto Paralelo - PE{pe_id} (MASTER - CÓDIGO GENÉRICO REUTILIZABLE)
 # ============================================================================
-# Segmento: elementos [{start_idx} to {start_idx + SEGMENT_SIZE - 1}] + REDUCCIÓN
-# Configuración: VECTOR_SIZE={VECTOR_SIZE}, SEGMENT_SIZE={SEGMENT_SIZE}
+# Este código carga constantes desde SHARED_CONFIG (addr 0-15)
+# OPTIMIZACIÓN: Usa MOV immediate para BARRIER_CHECK y NUM_PES
+#   (evita cache thrashing durante barrier/reducción)
 # ============================================================================
 
 # ============================================================================
-# FASE 1: Calcular producto parcial propio con LOOP
+# FASE 1: Calcular producto parcial propio
 # ============================================================================
+
+# Cargar VECTOR_A_ADDR (addr 0)
+MOV R4, {float(CFG_VECTOR_A_ADDR)}
+LOAD R5, [R4]        # R5 = VECTOR_A_ADDR (para cálculo de direcciones)
+
+# Cargar VECTOR_B_ADDR (addr 1)
+MOV R4, {float(CFG_VECTOR_B_ADDR)}
+LOAD R2, [R4]        # R2 = VECTOR_B_ADDR
+
+# Cargar start_index para PE{pe_id} (addr {cfg_start_idx_addr})
+MOV R4, {float(cfg_start_idx_addr)}
+LOAD R1, [R4]        # R1 = start_index (índice, no dirección)
+
+# Cargar segment_size para PE{pe_id} (addr {cfg_segment_size_addr})
+MOV R4, {float(cfg_segment_size_addr)}
+LOAD R3, [R4]        # R3 = segment_size (contador)
 
 # Inicialización
-MOV R0, 0.0         # R0 = acumulador (resultado parcial)
-MOV R1, {float(start_idx)}         # R1 = índice de elemento actual
-MOV R2, {float(VECTOR_B_BASE)}       # R2 = base de vector B
-MOV R3, {float(SEGMENT_SIZE)}        # R3 = contador del loop (SEGMENT_SIZE)
+MOV R0, 0.0         # R0 = acumulador
 
 # LOOP: Procesar segmento propio
 LOOP_START:
-LOAD R4, [R1]       # R4 = A[i]
-FADD R5, R2, R1     # R5 = VECTOR_B_BASE + i
-LOAD R6, [R5]       # R6 = B[i]
-FMUL R7, R4, R6     # R7 = A[i] * B[i]
-FADD R0, R0, R7     # acum += A[i] * B[i]
+FADD R4, R5, R1     # R4 = VECTOR_A_ADDR + i (dirección de A[i])
+LOAD R4, [R4]       # R4 = A[i]
+FADD R6, R2, R1     # R6 = VECTOR_B_ADDR + i
+LOAD R6, [R6]       # R6 = B[i]
+FMUL R4, R4, R6     # R4 = A[i] * B[i]
+FADD R0, R0, R4     # acumulador += producto
 INC R1              # i++
 DEC R3              # contador--
-JNZ LOOP_START      # Si R3 != 0, repetir
+JNZ LOOP_START      # Repetir si contador != 0
 
-# Guardar resultado parcial de PE{pe_id}
-MOV R5, {float(result_addr)}       # RESULTS_BASE + {pe_id}*BLOCK_SIZE
-STORE R0, [R5]      # Guardar resultado parcial de PE{pe_id}
+# Guardar resultado parcial (direccionamiento directo)
+MOV R5, {float(RESULTS_ADDR + pe_id)}
+STORE R0, [R5]      # Guardar en RESULTS_ADDR + {pe_id}
 
 # ============================================================================
 # FASE 2: BARRIER - Esperar a que otros PEs terminen
 # ============================================================================
+
 WAIT_LOOP:
-"""
-    
-    # Cargar flags de otros PEs
-    for pe in range(NUM_PES - 1):  # PE0, PE1, PE2
-        flag_addr = FLAGS_BASE + pe * BLOCK_SIZE
-        code += f"MOV R{pe+1}, {float(flag_addr)}      # Dirección flag PE{pe}\n"
-        code += f"LOAD R{pe+1}, [R{pe+1}]  # R{pe+1} = flag PE{pe}\n"
-    
-    # Sumar todos los flags
-    code += f"""
-# Sumar flags (deben sumar {NUM_PES - 1}.0)
-FADD R6, R1, R2     # R6 = flag0 + flag1
-"""
-    if NUM_PES > 3:
-        code += f"FADD R6, R6, R3     # R6 += flag2\n"
-    
-    code += f"""
-# Restar {NUM_PES - 1}.0 para verificar
-MOV R7, {float(CONSTANTS_BASE)}       # Dirección de constante -{NUM_PES - 1}.0
-LOAD R7, [R7]       # R7 = -{NUM_PES - 1}.0
-FADD R6, R6, R7     # R6 = suma_flags - {NUM_PES - 1}.0
-JNZ WAIT_LOOP       # Si R6 != 0, repetir
+# Cargar flags directamente (1 solo bloque de caché)
+MOV R1, {float(FLAGS_ADDR)}
+LOAD R2, [R1]        # R2 = flag[PE0]
+
+MOV R1, {float(FLAGS_ADDR + 1)}
+LOAD R4, [R1]        # R4 = flag[PE1]
+
+MOV R1, {float(FLAGS_ADDR + 2)}
+LOAD R5, [R1]        # R5 = flag[PE2]
+
+# Sumar flags
+FADD R6, R2, R4      # R6 = flag0 + flag1
+FADD R6, R6, R5      # R6 += flag2
+
+# OPTIMIZACIÓN: MOV immediate para BARRIER_CHECK (evita cache miss)
+MOV R7, {barrier_check_value}  # R7 = -(NUM_PES-1) = {barrier_check_value}
+FADD R6, R6, R7      # R6 = suma_flags - (NUM_PES-1)
+JNZ WAIT_LOOP        # Si != 0, repetir
 
 # ============================================================================
-# FASE 3: REDUCCIÓN - Sumar todos los productos parciales con LOOP
+# FASE 3: REDUCCIÓN - Sumar resultados parciales
 # ============================================================================
 
-MOV R0, 0.0         # R0 = acumulador final
-MOV R1, {float(RESULTS_BASE)}        # R1 = base de resultados parciales
-MOV R2, {float(NUM_PES)}             # R2 = contador (NUM_PES)
-MOV R3, {float(BLOCK_SIZE)}          # R3 = BLOCK_SIZE (offset entre resultados)
+# OPTIMIZACIÓN: MOV immediate para NUM_PES (evita cache miss)
+MOV R2, {num_pes_value}  # R2 = NUM_PES = {num_pes_value} (contador)
+
+MOV R1, {float(RESULTS_ADDR)}  # R1 = dirección actual (empieza en RESULTS_ADDR)
+MOV R0, 0.0          # R0 = acumulador final
 
 REDUCE_LOOP:
-# Cargar resultado parcial
-LOAD R4, [R1]       # R4 = resultado_parcial[i]
-FADD R0, R0, R4     # acum += resultado_parcial[i]
-
-# Avanzar a siguiente resultado (dirección += BLOCK_SIZE)
-FADD R1, R1, R3     # R1 += BLOCK_SIZE
-
-# Decrementar contador
-DEC R2              # contador--
-JNZ REDUCE_LOOP     # Si R2 != 0, repetir
+LOAD R4, [R1]        # R4 = resultado_parcial[i]
+FADD R0, R0, R4      # acumulador += resultado_parcial[i]
+INC R1               # R1++ (siguiente resultado: compacto, +1 dirección)
+DEC R2               # contador--
+JNZ REDUCE_LOOP      # Repetir si contador != 0
 
 # ============================================================================
 # Guardar resultado final
 # ============================================================================
-MOV R2, {float(FINAL_RESULT_ADDR)}       # Dirección resultado final
-STORE R0, [R2]      # Guardar producto punto final
+MOV R2, {float(FINAL_RESULT_ADDR)}
+STORE R0, [R2]       # Guardar producto punto final
 
 HALT
 """
@@ -229,7 +294,9 @@ def main():
     print(f"Generando archivos assembly para:")
     print(f"  VECTOR_SIZE = {VECTOR_SIZE}")
     print(f"  NUM_PES = {NUM_PES}")
-    print(f"  SEGMENT_SIZE = {SEGMENT_SIZE}")
+    print(f"  SEGMENT_SIZE_WORKER = {SEGMENT_SIZE_WORKER}")
+    print(f"  SEGMENT_SIZE_MASTER = {SEGMENT_SIZE_MASTER}")
+    print(f"  RESIDUE = {RESIDUE}")
     print()
     
     # Generar PEs trabajadores (PE0 - PE2)

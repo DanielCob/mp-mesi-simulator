@@ -1,53 +1,68 @@
 # ============================================================================
-# Producto Punto Paralelo - PE2 (GENERADO AUTOMÁTICAMENTE CON LOOP)
+# Producto Punto Paralelo - PE2 (CÓDIGO GENÉRICO REUTILIZABLE)
 # ============================================================================
-# Segmento: elementos [8 to 11]
-# Configuración: VECTOR_SIZE=16, SEGMENT_SIZE=4
+# Este código carga todas las constantes desde SHARED_CONFIG (addr 0-15)
+# NO requiere regeneración al cambiar VECTOR_SIZE, NUM_PES, etc.
+# Solo recompilar para actualizar el área de configuración compartida
+#
+# SHARED_CONFIG Layout:
+#   [0] = VECTOR_A_ADDR
+#   [1] = VECTOR_B_ADDR
+#   [2] = RESULTS_ADDR
+#   [3] = FLAGS_ADDR
+#   [8+2*2] = PE2_START_INDEX
+#   [9+2*2] = PE2_SEGMENT_SIZE
 # ============================================================================
 
 # ============================================================================
-# Inicialización
+# CARGA DE CONSTANTES DESDE SHARED_CONFIG
+# ============================================================================
+
+# Cargar VECTOR_A_ADDR (addr 0)
+MOV R4, 0.0
+LOAD R5, [R4]        # R5 = VECTOR_A_ADDR (para cálculo de direcciones)
+
+# Cargar VECTOR_B_ADDR (addr 1)
+MOV R4, 1.0
+LOAD R2, [R4]        # R2 = VECTOR_B_ADDR
+
+# Cargar start_index para PE2 (addr 12)
+MOV R4, 12.0
+LOAD R1, [R4]        # R1 = start_index (índice, no dirección)
+
+# Cargar segment_size para PE2 (addr 13)
+MOV R4, 13.0
+LOAD R3, [R4]        # R3 = segment_size (contador del loop)
+
+# ============================================================================
+# INICIALIZACIÓN
 # ============================================================================
 MOV R0, 0.0         # R0 = acumulador (resultado parcial)
-MOV R1, 8.0         # R1 = índice de elemento actual
-MOV R2, 100.0       # R2 = base de vector B
-MOV R3, 4.0        # R3 = contador del loop (SEGMENT_SIZE)
 
 # ============================================================================
-# LOOP: Procesar SEGMENT_SIZE elementos
+# LOOP: Procesar segment_size elementos
 # ============================================================================
 LOOP_START:
-# Cargar A[i] usando addressing indirecto
-LOAD R4, [R1]       # R4 = A[i]
-
-# Calcular dirección de B[i] = VECTOR_B_BASE + i
-FADD R5, R2, R1     # R5 = VECTOR_B_BASE + i
-LOAD R6, [R5]       # R6 = B[i]
-
-# Multiplicar A[i] * B[i]
-FMUL R7, R4, R6     # R7 = A[i] * B[i]
-
-# Acumular resultado
-FADD R0, R0, R7     # acum += A[i] * B[i]
-
-# Incrementar índice
+FADD R4, R5, R1     # R4 = VECTOR_A_ADDR + i (dirección de A[i])
+LOAD R4, [R4]       # R4 = A[i]
+FADD R6, R2, R1     # R6 = VECTOR_B_ADDR + i
+LOAD R6, [R6]       # R6 = B[i]
+FMUL R4, R4, R6     # R4 = A[i] * B[i]
+FADD R0, R0, R4     # acumulador += producto
 INC R1              # i++
-
-# Decrementar contador y verificar si continuar
 DEC R3              # contador--
-JNZ LOOP_START      # Si R3 != 0, repetir loop
+JNZ LOOP_START      # Repetir si contador != 0
 
 # ============================================================================
-# Guardar resultado parcial
+# GUARDAR RESULTADO Y SEÑALIZAR
 # ============================================================================
-MOV R5, 208.0       # RESULTS_BASE + 2*BLOCK_SIZE
-STORE R0, [R5]      # Guardar resultado parcial de PE2
+# Resultado parcial: RESULTS_ADDR + pe_id (direccionamiento directo)
+MOV R5, 18.0
+STORE R0, [R5]      # Guardar resultado parcial
 
-# ============================================================================
-# Señalizar finalización (barrier)
-# ============================================================================
+# Flag de sincronización: FLAGS_ADDR + pe_id
+MOV R7, 22.0
 MOV R6, 1.0         # Flag value
-MOV R7, 228.0       # FLAGS_BASE + 2*BLOCK_SIZE
-STORE R6, [R7]      # Flag PE2 = 1.0
+STORE R6, [R7]      # Señalizar finalización
 
 HALT

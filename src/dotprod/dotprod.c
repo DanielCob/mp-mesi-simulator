@@ -7,49 +7,86 @@ void dotprod_init_data(Memory* mem) {
     pthread_mutex_lock(&mem->mutex);
     
     printf("\n[DotProd] Initializing test data...\n");
-    printf("[DotProd] Configuration: VECTOR_SIZE=%d, NUM_PES=%d, SEGMENT_SIZE=%d\n", 
-           VECTOR_SIZE, NUM_PES, SEGMENT_SIZE);
     
+    // ========================================================================
+    // SHARED_CONFIG: Configuración compartida que los PEs leen al arranque
+    // ========================================================================
+    printf("[DotProd] Initializing SHARED_CONFIG area (addresses %d-%d)\n", 
+           SHARED_CONFIG_ADDR, CFG_PE_START_ADDR + NUM_PES * CFG_PARAMS_PER_PE - 1);
+    
+    // Configuración global del sistema
+    mem->data[CFG_VECTOR_A_ADDR] = (double)VECTOR_A_ADDR;
+    mem->data[CFG_VECTOR_B_ADDR] = (double)VECTOR_B_ADDR;
+    mem->data[CFG_RESULTS_ADDR] = (double)RESULTS_ADDR;
+    mem->data[CFG_FLAGS_ADDR] = (double)FLAGS_ADDR;
+    mem->data[CFG_FINAL_RESULT_ADDR] = (double)FINAL_RESULT_ADDR;
+    mem->data[CFG_NUM_PES_ADDR] = (double)NUM_PES;
+    mem->data[CFG_BARRIER_CHECK_ADDR] = -(double)(NUM_PES - 1);
+    
+    printf("  Global config:\n");
+    printf("    VECTOR_A_ADDR=%d, VECTOR_B_ADDR=%d\n", VECTOR_A_ADDR, VECTOR_B_ADDR);
+    printf("    RESULTS_ADDR=%d, FLAGS_ADDR=%d, FINAL_RESULT=%d\n", 
+           RESULTS_ADDR, FLAGS_ADDR, FINAL_RESULT_ADDR);
+    printf("    NUM_PES=%d, BARRIER_CHECK=%.0f\n", NUM_PES, mem->data[CFG_BARRIER_CHECK_ADDR]);
+    
+    // Configuración específica por PE (start_index, segment_size)
+    printf("  Per-PE config:\n");
+    for (int pe = 0; pe < NUM_PES; pe++) {
+        int start_idx = pe * SEGMENT_SIZE_WORKER;
+        int segment_size = (pe == NUM_PES - 1) ? SEGMENT_SIZE_MASTER : SEGMENT_SIZE_WORKER;
+        
+        mem->data[CFG_PE(pe, PE_START_INDEX)] = (double)start_idx;
+        mem->data[CFG_PE(pe, PE_SEGMENT_SIZE)] = (double)segment_size;
+        
+        printf("    PE%d: start=%d, size=%d (addr %d-%d)\n",
+               pe, start_idx, segment_size, 
+               CFG_PE(pe, 0), CFG_PE(pe, 1));
+    }
+    
+    // ========================================================================
+    // Inicializar área de resultados parciales (1 bloque: 4 valores)
+    // ========================================================================
+    printf("[DotProd] Initializing results area (1 cache block at addr %d)\n", RESULTS_ADDR);
+    for (int pe = 0; pe < NUM_PES; pe++) {
+        mem->data[RESULTS_ADDR + pe] = 0.0;
+        printf("  PE%d result → addr %d\n", pe, RESULTS_ADDR + pe);
+    }
+    
+    // ========================================================================
+    // Inicializar flags de sincronización (1 bloque: primeros 3 valores)
+    // ========================================================================
+    printf("[DotProd] Initializing sync flags (1 cache block at addr %d)\n", FLAGS_ADDR);
+    for (int pe = 0; pe < NUM_PES - 1; pe++) {  // Solo PE0-PE2 necesitan flags
+        mem->data[FLAGS_ADDR + pe] = 0.0;
+        printf("  PE%d flag → addr %d\n", pe, FLAGS_ADDR + pe);
+    }
+    
+    // Resultado final
+    mem->data[FINAL_RESULT_ADDR] = 0.0;
+    printf("[DotProd] Final result → addr %d\n", FINAL_RESULT_ADDR);
+    
+    // ========================================================================
+    // Vectores de datos (al final de memoria)
+    // ========================================================================
     // Vector A: valores 1.0 a VECTOR_SIZE
     printf("[DotProd] Loading Vector A at addresses %d-%d:\n  A = [", 
-           VECTOR_A_BASE, VECTOR_A_BASE + VECTOR_SIZE - 1);
+           VECTOR_A_ADDR, VECTOR_A_ADDR + VECTOR_SIZE - 1);
     for (int i = 0; i < VECTOR_SIZE; i++) {
-        mem->data[VECTOR_A_BASE + i] = (double)(i + 1);
-        printf("%.0f", mem->data[VECTOR_A_BASE + i]);
+        mem->data[VECTOR_A_ADDR + i] = (double)(i + 1);
+        printf("%.0f", mem->data[VECTOR_A_ADDR + i]);
         if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
     // Vector B: todos valores 1.0
     printf("[DotProd] Loading Vector B at addresses %d-%d:\n  B = [",
-           VECTOR_B_BASE, VECTOR_B_BASE + VECTOR_SIZE - 1);
+           VECTOR_B_ADDR, VECTOR_B_ADDR + VECTOR_SIZE - 1);
     for (int i = 0; i < VECTOR_SIZE; i++) {
-        mem->data[VECTOR_B_BASE + i] = 1.0;
-        printf("%.0f", mem->data[VECTOR_B_BASE + i]);
+        mem->data[VECTOR_B_ADDR + i] = 1.0;
+        printf("%.0f", mem->data[VECTOR_B_ADDR + i]);
         if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
-    
-    // Inicializar área de resultados parciales (bloques separados)
-    printf("[DotProd] Initializing result areas (separate cache blocks)\n");
-    for (int pe = 0; pe < NUM_PES; pe++) {
-        mem->data[RESULTS_BASE + pe * BLOCK_SIZE] = 0.0;
-        printf("  PE%d partial result → addr %d (block %d-%d)\n", 
-               pe, RESULTS_BASE + pe * BLOCK_SIZE,
-               RESULTS_BASE + pe * BLOCK_SIZE,
-               RESULTS_BASE + pe * BLOCK_SIZE + BLOCK_SIZE - 1);
-    }
-    mem->data[FINAL_RESULT_ADDR] = 0.0;  // Final result
-    printf("  Final result → addr %d\n", FINAL_RESULT_ADDR);
-    
-    // Flags de sincronización para barrier (bloques separados)
-    printf("[DotProd] Initializing synchronization flags in separate blocks\n");
-    for (int pe = 0; pe < NUM_PES - 1; pe++) {  // Solo PE0-PE2 necesitan flags
-        mem->data[FLAGS_BASE + pe * BLOCK_SIZE] = 0.0;
-        printf("  PE%d flag → addr %d\n", pe, FLAGS_BASE + pe * BLOCK_SIZE);
-    }
-    mem->data[CONSTANTS_BASE] = -(double)(NUM_PES - 1);  // Constante para barrier
-    printf("  Barrier constant (-%.0f) → addr %d\n", (double)(NUM_PES - 1), CONSTANTS_BASE);
     
     // Cálculo esperado
     double expected = 0.0;
@@ -84,14 +121,14 @@ void dotprod_print_results(Memory* mem) {
     printf("\nInput Vectors:\n");
     printf("  Vector A: [");
     for (int i = 0; i < VECTOR_SIZE; i++) {
-        printf("%.0f", mem->data[VECTOR_A_BASE + i]);
+        printf("%.0f", mem->data[VECTOR_A_ADDR + i]);
         if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
     printf("  Vector B: [");
     for (int i = 0; i < VECTOR_SIZE; i++) {
-        printf("%.0f", mem->data[VECTOR_B_BASE + i]);
+        printf("%.0f", mem->data[VECTOR_B_ADDR + i]);
         if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
@@ -99,9 +136,9 @@ void dotprod_print_results(Memory* mem) {
     // Imprimir resultados parciales
     printf("\nPartial Products (per PE):\n");
     for (int pe = 0; pe < NUM_PES; pe++) {
-        int start_elem = pe * SEGMENT_SIZE;
-        int end_elem = start_elem + SEGMENT_SIZE - 1;
-        int addr = RESULTS_BASE + pe * BLOCK_SIZE;
+        int start_elem = pe * SEGMENT_SIZE_WORKER;
+        int end_elem = start_elem + SEGMENT_SIZE_WORKER - 1;
+        int addr = RESULTS_ADDR + pe;  // Compactos: direcciones consecutivas
         printf("  PE%d (elements %d-%d):   %.2f (addr %d)\n", 
                pe, start_elem, end_elem, mem->data[addr], addr);
     }

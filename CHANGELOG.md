@@ -1,6 +1,84 @@
 ````markdown
 # Changelog - MESI Multiprocessor Simulator
 
+## [2.2.1] - 2025-10-21 - Optimización del Barrier con MOV Directo
+
+### ⚡ Optimización
+
+**Uso de MOV inmediato para constante de barrier** (elimina acceso a memoria innecesario)
+
+**Antes:**
+```assembly
+MOV R7, 232.0       # Cargar dirección de constante
+LOAD R7, [R7]       # R7 = -3.0 (desde memoria)
+FADD R6, R6, R7     # suma_flags - 3.0
+```
+
+**Ahora:**
+```assembly
+MOV R7, -3.0        # R7 = -3.0 (constante inmediata)
+FADD R6, R6, R7     # suma_flags - 3.0
+```
+
+**Ventajas:**
+- ✅ **1 instrucción menos** (elimina LOAD)
+- ✅ **Reduce accesos a memoria** en PE3
+- ✅ **Más rápido:** No requiere buscar en caché
+- ✅ **Menos tráfico de bus:** Un bloque menos a leer
+
+**Impacto medido en PE3:**
+- Lecturas: 15 (antes 18) → **-16.7%**
+- Misses: 8 (antes 11) → **-27.3%**
+- BusRd: 8 (antes 11) → **-27.3%**
+- Bytes leídos: 320 (antes 416) → **-23%**
+
+**Archivos modificados:**
+- `scripts/generate_asm.py`: Usa `MOV R7, -3.0` en lugar de LOAD
+- `src/dotprod/dotprod.c`: Elimina inicialización de CONSTANTS_BASE
+
+---
+
+## [2.2.0] - 2025-10-21 - Manejo de Vectores No Divisibles
+
+### ✨ Mejora principal
+
+**Soporte para vectores de cualquier tamaño** (no requiere múltiplo de NUM_PES)
+
+#### **Estrategia: Distribución con Residuo**
+
+El sistema ahora maneja vectores con tamaños no divisibles por NUM_PES asignando los elementos residuales al PE Master (PE3).
+
+**Ejemplo:** VECTOR_SIZE = 17, NUM_PES = 4
+- PE0: elementos 0-3 (4 elementos)
+- PE1: elementos 4-7 (4 elementos)
+- PE2: elementos 8-11 (4 elementos)
+- PE3: elementos 12-16 (**5 elementos** ← incluye residuo)
+
+**Nuevas macros en config.h:**
+```c
+#define SEGMENT_SIZE_WORKER (VECTOR_SIZE / NUM_PES)        // Base por PE
+#define RESIDUE ((VECTOR_SIZE) % NUM_PES)                   // Residuo
+#define SEGMENT_SIZE_MASTER (SEGMENT_SIZE_WORKER + RESIDUE) // PE3 maneja extra
+```
+
+**Ventajas:**
+- ✅ Acepta **cualquier tamaño** de vector (5, 17, 19, 100...)
+- ✅ Sin desperdicio de memoria (no padding)
+- ✅ Automático: script Python calcula distribución
+- ✅ Simple: solo PE3 tiene lógica especial
+
+**Archivos modificados:**
+- `src/include/config.h`: Macros SEGMENT_SIZE_WORKER, SEGMENT_SIZE_MASTER, RESIDUE
+- `scripts/generate_asm.py`: Calcula y usa tamaños diferentes para workers y master
+- `RESIDUE_HANDLING.md`: Documentación completa con ejemplos
+
+**Pruebas:**
+- VECTOR_SIZE = 17 → Resultado: 153.00 ✅
+- VECTOR_SIZE = 19 → Resultado: 190.00 ✅
+- VECTOR_SIZE = 16 → Resultado: 136.00 ✅ (sin residuo)
+
+---
+
 ## [2.1.0] - 2025-10-21 - Implementación de LOOPS Reales
 
 ### ✨ Mejoras principales
