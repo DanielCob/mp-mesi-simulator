@@ -68,8 +68,32 @@ void dotprod_init_data(Memory* mem) {
     // ========================================================================
     // Vectores de datos (al final de memoria)
     // ========================================================================
+    printf("[DotProd] Vector Memory Layout:\n");
+    printf("  Aligned start position: %d\n", VECTORS_START_ALIGNED);
+    printf("  BLOCK_SIZE: %d doubles (%zu bytes)\n", BLOCK_SIZE, BLOCK_SIZE * sizeof(double));
+    printf("  Misalignment offset: %d doubles\n", MISALIGNMENT_OFFSET);
+    
+    printf("  Vector A: addr %d (aligned: %s, offset=%d)\n", 
+           VECTOR_A_ADDR, IS_ALIGNED(VECTOR_A_ADDR) ? "YES" : "NO", 
+           GET_BLOCK_OFFSET(VECTOR_A_ADDR));
+    printf("  Vector B: addr %d (aligned: %s, offset=%d)\n", 
+           VECTOR_B_ADDR, IS_ALIGNED(VECTOR_B_ADDR) ? "YES" : "NO",
+           GET_BLOCK_OFFSET(VECTOR_B_ADDR));
+    
+    // Calcular cuántos bloques de caché ocuparán los vectores
+    int blocks_a = (VECTOR_SIZE + GET_BLOCK_OFFSET(VECTOR_A_ADDR) + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int blocks_b = (VECTOR_SIZE + GET_BLOCK_OFFSET(VECTOR_B_ADDR) + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    int blocks_aligned = (VECTOR_SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    
+    printf("  Cache blocks needed:\n");
+    printf("    Vector A: %d blocks (aligned would use %d)\n", blocks_a, blocks_aligned);
+    printf("    Vector B: %d blocks (aligned would use %d)\n", blocks_b, blocks_aligned);
+    if (blocks_a > blocks_aligned || blocks_b > blocks_aligned) {
+        printf("    ⚠ Misalignment causes extra cache block usage!\n");
+    }
+    
     // Vector A: valores 1.0 a VECTOR_SIZE
-    printf("[DotProd] Loading Vector A at addresses %d-%d:\n  A = [", 
+    printf("\n[DotProd] Loading Vector A at addresses %d-%d:\n  A = [", 
            VECTOR_A_ADDR, VECTOR_A_ADDR + VECTOR_SIZE - 1);
     for (int i = 0; i < VECTOR_SIZE; i++) {
         mem->data[VECTOR_A_ADDR + i] = (double)(i + 1);

@@ -9,27 +9,17 @@
 #define MEM_SIZE 512
 
 // CONFIGURACIÓN DE VECTORES (PRODUCTO PUNTO)
-#define VECTOR_SIZE 16           // Tamaño total del vector (puede ser cualquier tamaño)
+#define VECTOR_SIZE 16
 
 // Distribución con residuo: PE0-PE2 procesan base, PE3 (master) maneja residuo
 #define SEGMENT_SIZE_WORKER (VECTOR_SIZE / NUM_PES)        // Tamaño base por PE trabajador
 #define RESIDUE ((VECTOR_SIZE) % NUM_PES)                   // Elementos residuales
 #define SEGMENT_SIZE_MASTER (SEGMENT_SIZE_WORKER + RESIDUE) // PE3 maneja base + residuo
 
-// MAPA DE MEMORIA - Layout optimizado y escalable
-// ============================================================================
-// DISEÑO: Área compartida compacta al inicio, vectores dinámicos después
-// ============================================================================
-// 
-// Estructura de memoria:
-//   [0 - CFG_SIZE-1]        SHARED_CONFIG (configuración compartida)
-//   [CFG_SIZE - SYNC_END]   Área de sincronización (resultados + flags)
-//   [VECTORS_START - ...]   Vectores de datos (tamaño dinámico)
-//
-// Este diseño escala automáticamente con NUM_PES y VECTOR_SIZE
-// ============================================================================
+#define MISALIGNMENT_OFFSET    0    // Desalineamiento global (0 = alineado)
 
-// --- ÁREA DE CONFIGURACIÓN COMPARTIDA ---
+// SEGMENTACIÓN DE MEMORIA
+// Configuración de memoria compartida
 #define SHARED_CONFIG_ADDR         0               // Inicio de configuración
 #define CFG_GLOBAL_SIZE            8               // Parámetros globales (0-7)
 #define CFG_PARAMS_PER_PE          2               // start_index, segment_size
@@ -47,7 +37,6 @@
 #define CFG_RESERVED_ADDR          7               // Reservado para expansión
 
 // Configuración específica por PE (empieza en addr 8)
-// Cada PE tiene CFG_PARAMS_PER_PE valores consecutivos
 #define CFG_PE_START_ADDR          CFG_GLOBAL_SIZE
 #define CFG_PE(pe_id, param_offset) (CFG_PE_START_ADDR + (pe_id) * CFG_PARAMS_PER_PE + (param_offset))
 
@@ -55,33 +44,17 @@
 #define PE_START_INDEX             0               // Índice inicial del segmento
 #define PE_SEGMENT_SIZE            1               // Cantidad de elementos a procesar
 
-// --- ÁREA DE SINCRONIZACIÓN ---
-// Esta área empieza después de toda la configuración
-// y se adapta automáticamente al número de PEs
-
+// Espacio compartido para sincronización y resultados finales
 #define SYNC_AREA_START            CFG_TOTAL_SIZE
-
-// Resultados parciales (1 resultado por PE, compacto en 1 bloque si NUM_PES <= BLOCK_SIZE)
 #define RESULTS_ADDR               SYNC_AREA_START
-
-// Flags de sincronización (1 flag por PE trabajador: NUM_PES-1 flags)
-// Solo PE0 a PE(NUM_PES-2) necesitan flags, el master no
 #define FLAGS_ADDR                 (RESULTS_ADDR + NUM_PES)
-
-// Resultado final (1 valor)
 #define FINAL_RESULT_ADDR          (FLAGS_ADDR + NUM_PES)
 
-// --- ÁREA DE DATOS (Vectores) ---
-// Los vectores empiezan después del área de sincronización
-// Alineamos a múltiplo de BLOCK_SIZE para mejor rendimiento de caché
-
+// Área de vectores con desalineamiento
 #define SYNC_AREA_END              (FINAL_RESULT_ADDR + 1)
-#define VECTORS_START_UNALIGNED    SYNC_AREA_END
-#define VECTORS_START              ALIGN_UP(VECTORS_START_UNALIGNED)
-
-// Direcciones de los vectores (dinámicas, escalan con VECTOR_SIZE)
-#define VECTOR_A_ADDR              VECTORS_START
-#define VECTOR_B_ADDR              (VECTOR_A_ADDR + VECTOR_SIZE)
+#define VECTORS_START_ALIGNED      ALIGN_UP(SYNC_AREA_END)
+#define VECTOR_A_ADDR              (VECTORS_START_ALIGNED + ((MISALIGNMENT_OFFSET) % BLOCK_SIZE))
+#define VECTOR_B_ADDR              (VECTOR_A_ADDR + VECTOR_SIZE + ((MISALIGNMENT_OFFSET) % BLOCK_SIZE))
 
 // PROTOCOLO MESI
 typedef enum { 

@@ -238,14 +238,14 @@ def main():
         code = generate_worker_pe(pe_id)
         with open(filename, 'w') as f:
             f.write(code)
-        print(f"✓ Generado: {filename}")
+        print(f" Generado: {filename}")
     
     # Generar PE master (PE3)
     filename = f"asm/dotprod_pe{NUM_PES - 1}.asm"
     code = generate_master_pe(NUM_PES - 1)
     with open(filename, 'w') as f:
         f.write(code)
-    print(f"✓ Generado: {filename}")
+    print(f" Generado: {filename}")
     
     print(f"\n {NUM_PES} archivos generados correctamente")
 
