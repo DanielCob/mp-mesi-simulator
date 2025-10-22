@@ -16,6 +16,10 @@
 #define RESIDUE ((VECTOR_SIZE) % NUM_PES)                   // Elementos residuales
 #define SEGMENT_SIZE_MASTER (SEGMENT_SIZE_WORKER + RESIDUE) // PE3 maneja base + residuo
 
+// Rutas de archivos CSV
+#define VECTOR_A_FILE          "data/vector_decimals_a.csv"
+#define VECTOR_B_FILE          "data/vector_decimals_b.csv"
+
 #define MISALIGNMENT_OFFSET    0    // Desalineamiento global (0 = alineado)
 
 // SEGMENTACIÓN DE MEMORIA

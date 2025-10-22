@@ -1,7 +1,9 @@
 #include "dotprod.h"
+#include "vector_loader.h"
 #include "config.h"
 #include <stdio.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 void dotprod_init_data(Memory* mem) {
     pthread_mutex_lock(&mem->mutex);
@@ -92,30 +94,86 @@ void dotprod_init_data(Memory* mem) {
         printf("    ⚠ Misalignment causes extra cache block usage!\n");
     }
     
-    // Vector A: valores 1.0 a VECTOR_SIZE
-    printf("\n[DotProd] Loading Vector A at addresses %d-%d:\n  A = [", 
-           VECTOR_A_ADDR, VECTOR_A_ADDR + VECTOR_SIZE - 1);
-    for (int i = 0; i < VECTOR_SIZE; i++) {
-        mem->data[VECTOR_A_ADDR + i] = (double)(i + 1);
-        printf("%.0f", mem->data[VECTOR_A_ADDR + i]);
-        if (i < VECTOR_SIZE - 1) printf(", ");
-    }
-    printf("]\n");
+    // ========================================================================
+    // Cargar vectores desde archivos CSV
+    // ========================================================================
+    printf("\n[DotProd] Loading vectors from CSV files...\n");
     
-    // Vector B: todos valores 1.0
-    printf("[DotProd] Loading Vector B at addresses %d-%d:\n  B = [",
-           VECTOR_B_ADDR, VECTOR_B_ADDR + VECTOR_SIZE - 1);
-    for (int i = 0; i < VECTOR_SIZE; i++) {
-        mem->data[VECTOR_B_ADDR + i] = 1.0;
-        printf("%.0f", mem->data[VECTOR_B_ADDR + i]);
-        if (i < VECTOR_SIZE - 1) printf(", ");
-    }
-    printf("]\n");
+    // Buffers temporales para cargar los vectores
+    double* vec_a_buffer = (double*)malloc(VECTOR_SIZE * sizeof(double));
+    double* vec_b_buffer = (double*)malloc(VECTOR_SIZE * sizeof(double));
     
-    // Cálculo esperado
+    if (!vec_a_buffer || !vec_b_buffer) {
+        fprintf(stderr, "[DotProd] ERROR: No se pudo asignar memoria para buffers\n");
+        pthread_mutex_unlock(&mem->mutex);
+        return;
+    }
+    
+    // Cargar Vector A
+    VectorLoadResult result_a = load_vector_from_csv(VECTOR_A_FILE, vec_a_buffer, VECTOR_SIZE);
+    if (!result_a.success) {
+        fprintf(stderr, "[DotProd] ERROR cargando Vector A: %s\n", result_a.error_message);
+        fprintf(stderr, "[DotProd] El programa no puede continuar sin vectores válidos\n");
+        free(vec_a_buffer);
+        free(vec_b_buffer);
+        pthread_mutex_unlock(&mem->mutex);
+        return;
+    }
+    
+    printf("[DotProd] ✓ Vector A cargado desde '%s' (%d valores)\n", 
+           VECTOR_A_FILE, result_a.values_read);
+    
+    // Si se leyeron menos valores de los necesarios, rellenar con ceros
+    if (result_a.values_read < VECTOR_SIZE) {
+        printf("[DotProd] ⚠ Solo se leyeron %d/%d valores, rellenando con 0.0\n",
+               result_a.values_read, VECTOR_SIZE);
+        for (int i = result_a.values_read; i < VECTOR_SIZE; i++) {
+            vec_a_buffer[i] = 0.0;
+        }
+    }
+    
+    // Cargar Vector B
+    VectorLoadResult result_b = load_vector_from_csv(VECTOR_B_FILE, vec_b_buffer, VECTOR_SIZE);
+    if (!result_b.success) {
+        fprintf(stderr, "[DotProd] ERROR cargando Vector B: %s\n", result_b.error_message);
+        fprintf(stderr, "[DotProd] El programa no puede continuar sin vectores válidos\n");
+        free(vec_a_buffer);
+        free(vec_b_buffer);
+        pthread_mutex_unlock(&mem->mutex);
+        return;
+    }
+    
+    printf("[DotProd] ✓ Vector B cargado desde '%s' (%d valores)\n", 
+           VECTOR_B_FILE, result_b.values_read);
+    
+    // Si se leyeron menos valores de los necesarios, rellenar con ceros
+    if (result_b.values_read < VECTOR_SIZE) {
+        printf("[DotProd] ⚠ Solo se leyeron %d/%d valores, rellenando con 0.0\n",
+               result_b.values_read, VECTOR_SIZE);
+        for (int i = result_b.values_read; i < VECTOR_SIZE; i++) {
+            vec_b_buffer[i] = 0.0;
+        }
+    }
+    
+    // Copiar vectores a memoria y mostrarlos
+    print_vector("Vector A", vec_a_buffer, VECTOR_SIZE, VECTOR_A_ADDR);
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        mem->data[VECTOR_A_ADDR + i] = vec_a_buffer[i];
+    }
+    
+    print_vector("Vector B", vec_b_buffer, VECTOR_SIZE, VECTOR_B_ADDR);
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        mem->data[VECTOR_B_ADDR + i] = vec_b_buffer[i];
+    }
+    
+    // Liberar buffers temporales
+    free(vec_a_buffer);
+    free(vec_b_buffer);
+    
+    // Cálculo esperado (producto punto real de los vectores cargados)
     double expected = 0.0;
-    for (int i = 1; i <= VECTOR_SIZE; i++) {
-        expected += i * 1.0;
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        expected += mem->data[VECTOR_A_ADDR + i] * mem->data[VECTOR_B_ADDR + i];
     }
     printf("[DotProd] Expected result: %.2f\n", expected);
     printf("[DotProd] Data initialization complete\n\n");
@@ -171,10 +229,10 @@ void dotprod_print_results(Memory* mem) {
     double final_result = mem->data[FINAL_RESULT_ADDR];
     printf("\nFinal Dot Product: %.2f (addr %d)\n", final_result, FINAL_RESULT_ADDR);
     
-    // Verificación
+    // Verificación (calcular producto punto esperado de los vectores reales)
     double expected = 0.0;
-    for (int i = 1; i <= VECTOR_SIZE; i++) {
-        expected += i * 1.0;
+    for (int i = 0; i < VECTOR_SIZE; i++) {
+        expected += mem->data[VECTOR_A_ADDR + i] * mem->data[VECTOR_B_ADDR + i];
     }
     
     double error = final_result - expected;
