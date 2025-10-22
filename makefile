@@ -3,6 +3,7 @@
 # ============================
 CC = gcc
 CFLAGS = -Wall -Wextra -pthread -g
+DEPFLAGS = -MMD -MP
 TARGET = mp_mesi
 PYTHON = python3
 
@@ -26,6 +27,7 @@ INCLUDES = -I$(SRC_DIR) \
 # Nota: incluye automáticamente src/log.c
 SRC = $(shell find $(SRC_DIR) -name "*.c")
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+DEPS = $(OBJ:.o=.d)
 
 # Script de generación y archivo de configuración
 GEN_SCRIPT = $(SCRIPTS_DIR)/generate_asm.py
@@ -66,7 +68,7 @@ $(TARGET): $(ASM_FILES) $(OBJ)
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 	@mkdir -p $(dir $@)
 	@echo "$(YELLOW) Compilando $< ...$(RESET)"
-	@$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+	@$(CC) $(CFLAGS) $(DEPFLAGS) $(INCLUDES) -c $< -o $@
 
 # ============================
 # REGLAS DE EJECUCIÓN
@@ -94,3 +96,6 @@ cleanall: clean
 # EXTRA
 # ============================
 .PHONY: all clean cleanall run debug
+
+# Incluir archivos de dependencias generados por el compilador
+-include $(DEPS)

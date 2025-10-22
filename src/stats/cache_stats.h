@@ -36,9 +36,10 @@ typedef struct {
     uint64_t write_hits;
     uint64_t write_misses;
     
-    // Invalidaciones
-    uint64_t invalidations_sent;      // Invalidaciones enviadas por este PE
-    uint64_t invalidations_received;  // Invalidaciones recibidas por este PE
+    // Coherence invalidations
+    uint64_t invalidations_requested; // Requests that may cause invalidations (e.g., BusRdX/Upgr issued)
+    uint64_t invalidations_sent;      // Actual broadcast invalidations sent by this PE (bus confirmed)
+    uint64_t invalidations_received;  // Broadcast invalidations received by this PE
     
     // Operaciones de lectura/escritura
     uint64_t total_reads;
@@ -107,6 +108,9 @@ void stats_record_invalidation_received(CacheStats* stats);
  * @param stats Puntero a las estadísticas
  */
 void stats_record_invalidation_sent(CacheStats* stats);
+
+// Record an invalidation request (attempt) from this PE (BusRdX/Upgr issued)
+void stats_record_invalidation_requested(CacheStats* stats);
 
 /**
  * @brief Registra tráfico del bus (en bytes)

@@ -90,6 +90,14 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
                 cache_set_state(requestor, addr, M);  // I->M (record transition)
                 data_found = 1;
                 invalidations_count++;
+                // Record invalidations before early return
+                if (invalidations_count > 0) {
+                    bus_stats_record_invalidations(&bus->stats, invalidations_count);
+                    // Count actual broadcast invalidations as sent by the requestor
+                    for (int k = 0; k < invalidations_count; k++) {
+                        stats_record_invalidation_sent(&requestor->stats);
+                    }
+                }
                 return;
             } else if (state == E || state == S) {
                 if (!data_found) {
@@ -108,6 +116,10 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
     
     if (invalidations_count > 0) {
         bus_stats_record_invalidations(&bus->stats, invalidations_count);
+        // Count actual broadcast invalidations as sent by the requestor
+        for (int k = 0; k < invalidations_count; k++) {
+            stats_record_invalidation_sent(&requestor->stats);
+        }
     }
     
     // No cache has the data, read from memory
@@ -143,6 +155,9 @@ void handle_busupgr(Bus* bus, int addr, int src_pe) {
 
     if (invalidations_count > 0) {
         bus_stats_record_invalidations(&bus->stats, invalidations_count);
+        for (int k = 0; k < invalidations_count; k++) {
+            stats_record_invalidation_sent(&requestor->stats);
+        }
     }
 
     cache_set_state(requestor, addr, M);  // S->M (registra transición)

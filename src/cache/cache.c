@@ -182,7 +182,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
             else if (state == S) {
                 stats_record_write_hit(&cache->stats);
                 cache->stats.bus_upgrades++;
-                     stats_record_invalidation_sent(&cache->stats);  // We send invalidations
+                stats_record_invalidation_requested(&cache->stats);  // Request may cause invalidations
                  LOGD("PE%d write hit: set=%d way=%d S->M offset=%d BUS_UPGR value=%.2f", 
                  pe_id, set_index, i, offset, value);
                 
@@ -205,7 +205,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     // MISS: FETCH LINE WITH BUS_RDX AND WRITE WITH CALLBACK
     stats_record_write_miss(&cache->stats);
     stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);
-    stats_record_invalidation_sent(&cache->stats);  // BUS_RDX may cause invalidations
+    stats_record_invalidation_requested(&cache->stats);  // BUS_RDX may cause invalidations
     LOGD("PE%d write miss: set=%d -> BUS_RDX value=%.2f", pe_id, set_index, value);
 
     // Select victim (may write back if in M)

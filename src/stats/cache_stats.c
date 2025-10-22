@@ -37,6 +37,10 @@ void stats_record_invalidation_sent(CacheStats* stats) {
     stats->invalidations_sent++;
 }
 
+void stats_record_invalidation_requested(CacheStats* stats) {
+       stats->invalidations_requested++;
+}
+
 void stats_record_bus_traffic(CacheStats* stats, uint64_t bytes_read, uint64_t bytes_written) {
     stats->bytes_read_from_bus += bytes_read;
     stats->bytes_written_to_bus += bytes_written;
@@ -84,8 +88,8 @@ void stats_print(const CacheStats* stats, int pe_id) {
            B, RESET, total_hits, hit_rate, total_misses, miss_rate, total_accesses);
     
     // Coherence
-    printf("%sInvalidations%s: received=%lu sent=%lu\n", 
-           B, RESET, stats->invalidations_received, stats->invalidations_sent);
+    printf("%sInvalidations%s: received=%lu broadcast_sent=%lu requested=%lu\n", 
+           B, RESET, stats->invalidations_received, stats->invalidations_sent, stats->invalidations_requested);
     
     // Bus Traffic
     printf("%sBus%s: BusRd=%lu BusRdX=%lu BusUpgr=%lu WB=%lu\n", 
@@ -143,8 +147,8 @@ void stats_print_summary(const CacheStats* stats_array, int num_pes) {
     printf("Total: accesses=%lu hits=%lu misses=%lu hit=%.2f%% miss=%.2f%%\n",
            total_accesses_all, total_hits_all, total_misses_all, avg_hit_rate, avg_miss_rate);
     
-    // Invalidaciones
-       printf("%sInvalidations per PE%s:\n", B, RESET);
+        // Invalidations
+               printf("%sInvalidations per PE%s:\n", B, RESET);
     
     uint64_t total_inv_received = 0;
     uint64_t total_inv_sent = 0;
@@ -152,15 +156,16 @@ void stats_print_summary(const CacheStats* stats_array, int num_pes) {
     for (int i = 0; i < num_pes; i++) {
         uint64_t received = stats_array[i].invalidations_received;
         uint64_t sent = stats_array[i].invalidations_sent;
+        uint64_t requested = stats_array[i].invalidations_requested;
         
-        printf("  PE%d: received=%lu sent=%lu total=%lu\n",
-               i, received, sent, received + sent);
+        printf("  PE%d: received=%lu broadcast_sent=%lu requested=%lu total=%lu\n",
+               i, received, sent, requested, received + sent);
         
         total_inv_received += received;
         total_inv_sent += sent;
     }
     
-    printf("Total: received=%lu sent=%lu total=%lu\n",
+    printf("Total: received=%lu broadcast_sent=%lu total=%lu\n",
            total_inv_received, total_inv_sent, total_inv_received + total_inv_sent);
     
     // Tráfico del bus
