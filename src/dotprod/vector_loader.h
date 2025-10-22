@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-// Resultado de la carga de un vector
+// Result of loading a vector
 typedef struct {
     bool success;
     int values_read;
@@ -11,27 +11,27 @@ typedef struct {
 } VectorLoadResult;
 
 /**
- * Carga un vector desde un archivo CSV
+ * Load a vector from a CSV file
  * 
- * @param filename   Ruta al archivo CSV
- * @param buffer     Buffer donde almacenar los valores
- * @param max_size   Tamaño máximo del buffer
- * @return           Resultado de la operación
+ * @param filename   Path to the CSV file
+ * @param buffer     Buffer to store the values
+ * @param max_size   Maximum buffer size
+ * @return           Operation result
  * 
- * Formatos soportados:
- *   - Una línea con valores separados por comas: 1.0, 2.0, 3.0
- *   - Múltiples líneas, un valor por línea
- *   - Mezcla de ambos
+ * Supported formats:
+ *   - One line with comma-separated values: 1.0, 2.0, 3.0
+ *   - Multiple lines, one value per line
+ *   - A mix of both
  */
 VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int max_size);
 
 /**
- * Imprime el contenido de un vector en formato legible
+ * Print the contents of a vector in a readable format
  * 
- * @param name       Nombre del vector (para el mensaje)
- * @param buffer     Buffer con los valores
- * @param size       Cantidad de valores a imprimir
- * @param start_addr Dirección de memoria inicial
+ * @param name       Vector name (for the message)
+ * @param buffer     Buffer with values
+ * @param size       Number of values to print
+ * @param start_addr Initial memory address
  */
 void print_vector(const char* name, const double* buffer, int size, int start_addr);
 

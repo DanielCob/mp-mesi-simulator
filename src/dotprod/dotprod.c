@@ -1,22 +1,24 @@
+#define LOG_MODULE "DOTPROD"
 #include "dotprod.h"
 #include "vector_loader.h"
 #include "config.h"
 #include <stdio.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include "log.h"
 
 void dotprod_init_data(Memory* mem) {
     pthread_mutex_lock(&mem->mutex);
     
-    printf("\n[DotProd] Inicializando datos de prueba\n");
+        printf("\n[DotProd] Initializing sample data\n");
     
     // ========================================================================
-    // SHARED_CONFIG: Configuración compartida que los PEs leen al arranque
+    // SHARED_CONFIG: Shared configuration read by PEs at startup
     // ========================================================================
-    printf("[DotProd] Inicializando área SHARED_CONFIG (direcciones %d-%d)\n", 
+        printf("[DotProd] Initializing SHARED_CONFIG area (addresses %d-%d)\n", 
         SHARED_CONFIG_ADDR, CFG_PE_START_ADDR + NUM_PES * CFG_PARAMS_PER_PE - 1);
     
-    // Configuración global del sistema
+    // Global system configuration
     mem->data[CFG_VECTOR_A_ADDR] = (double)VECTOR_A_ADDR;
     mem->data[CFG_VECTOR_B_ADDR] = (double)VECTOR_B_ADDR;
     mem->data[CFG_RESULTS_ADDR] = (double)RESULTS_ADDR;
@@ -25,14 +27,14 @@ void dotprod_init_data(Memory* mem) {
     mem->data[CFG_NUM_PES_ADDR] = (double)NUM_PES;
     mem->data[CFG_BARRIER_CHECK_ADDR] = -(double)(NUM_PES - 1);
     
-    printf("  Configuración global:\n");
+        printf("  Global configuration:\n");
     printf("    VECTOR_A_ADDR=%d, VECTOR_B_ADDR=%d\n", VECTOR_A_ADDR, VECTOR_B_ADDR);
     printf("    RESULTS_ADDR=%d, FLAGS_ADDR=%d, FINAL_RESULT=%d\n", 
            RESULTS_ADDR, FLAGS_ADDR, FINAL_RESULT_ADDR);
     printf("    NUM_PES=%d, BARRIER_CHECK=%.0f\n", NUM_PES, mem->data[CFG_BARRIER_CHECK_ADDR]);
     
-    // Configuración específica por PE (start_index, segment_size)
-    printf("  Configuración por PE:\n");
+    // Per-PE configuration (start_index, segment_size)
+        printf("  Per-PE configuration:\n");
     for (int pe = 0; pe < NUM_PES; pe++) {
         int start_idx = pe * SEGMENT_SIZE_WORKER;
         int segment_size = (pe == NUM_PES - 1) ? SEGMENT_SIZE_MASTER : SEGMENT_SIZE_WORKER;
@@ -46,65 +48,65 @@ void dotprod_init_data(Memory* mem) {
     }
     
     // ========================================================================
-    // Inicializar área de resultados parciales (1 bloque: 4 valores)
+    // Initialize partial results area (1 block: 4 values)
     // ========================================================================
-    printf("[DotProd] Inicializando área de resultados (1 bloque de caché en addr %d)\n", RESULTS_ADDR);
+        printf("[DotProd] Initializing results area (1 cache block at addr %d)\n", RESULTS_ADDR);
     for (int pe = 0; pe < NUM_PES; pe++) {
         mem->data[RESULTS_ADDR + pe] = 0.0;
-    printf("  PE%d resultado -> addr %d\n", pe, RESULTS_ADDR + pe);
+            printf("  PE%d result -> addr %d\n", pe, RESULTS_ADDR + pe);
     }
     
     // ========================================================================
-    // Inicializar flags de sincronización (1 bloque: primeros 3 valores)
+    // Initialize synchronization flags (1 block: first 3 values)
     // ========================================================================
-    printf("[DotProd] Inicializando flags de sincronización (1 bloque de caché en addr %d)\n", FLAGS_ADDR);
+        printf("[DotProd] Initializing synchronization flags (1 cache block at addr %d)\n", FLAGS_ADDR);
     for (int pe = 0; pe < NUM_PES - 1; pe++) {  // Solo PE0-PE2 necesitan flags
         mem->data[FLAGS_ADDR + pe] = 0.0;
-    printf("  PE%d flag -> addr %d\n", pe, FLAGS_ADDR + pe);
+            printf("  PE%d flag -> addr %d\n", pe, FLAGS_ADDR + pe);
     }
     
-    // Resultado final
+    // Final result
     mem->data[FINAL_RESULT_ADDR] = 0.0;
-    printf("[DotProd] Resultado final -> addr %d\n", FINAL_RESULT_ADDR);
+    printf("[DotProd] Final result -> addr %d\n", FINAL_RESULT_ADDR);
     
     // ========================================================================
-    // Vectores de datos (al final de memoria)
+    // Data vectors (at the end of memory)
     // ========================================================================
-    printf("[DotProd] Diseño de memoria de vectores:\n");
-    printf("  Inicio alineado: %d\n", VECTORS_START_ALIGNED);
+    printf("[DotProd] Vector memory layout:\n");
+    printf("  Start aligned: %d\n", VECTORS_START_ALIGNED);
     printf("  BLOCK_SIZE: %d doubles (%zu bytes)\n", BLOCK_SIZE, BLOCK_SIZE * sizeof(double));
-    printf("  Desalineamiento: %d doubles\n", MISALIGNMENT_OFFSET);
+    printf("  Misalignment: %d doubles\n", MISALIGNMENT_OFFSET);
     
-    printf("  Vector A: addr %d (alineado: %s, offset=%d)\n", 
-        VECTOR_A_ADDR, IS_ALIGNED(VECTOR_A_ADDR) ? "sí" : "no", 
+    printf("  Vector A: addr %d (aligned: %s, offset=%d)\n", 
+        VECTOR_A_ADDR, IS_ALIGNED(VECTOR_A_ADDR) ? "yes" : "no", 
            GET_BLOCK_OFFSET(VECTOR_A_ADDR));
-    printf("  Vector B: addr %d (alineado: %s, offset=%d)\n", 
-        VECTOR_B_ADDR, IS_ALIGNED(VECTOR_B_ADDR) ? "sí" : "no",
+    printf("  Vector B: addr %d (aligned: %s, offset=%d)\n", 
+        VECTOR_B_ADDR, IS_ALIGNED(VECTOR_B_ADDR) ? "yes" : "no",
            GET_BLOCK_OFFSET(VECTOR_B_ADDR));
     
-    // Calcular cuántos bloques de caché ocuparán los vectores
+    // Calculate how many cache blocks are needed
     int blocks_a = (VECTOR_SIZE + GET_BLOCK_OFFSET(VECTOR_A_ADDR) + BLOCK_SIZE - 1) / BLOCK_SIZE;
     int blocks_b = (VECTOR_SIZE + GET_BLOCK_OFFSET(VECTOR_B_ADDR) + BLOCK_SIZE - 1) / BLOCK_SIZE;
     int blocks_aligned = (VECTOR_SIZE + BLOCK_SIZE - 1) / BLOCK_SIZE;
     
-    printf("  Bloques de caché necesarios:\n");
-    printf("    Vector A: %d bloques (alineado usaría %d)\n", blocks_a, blocks_aligned);
-    printf("    Vector B: %d bloques (alineado usaría %d)\n", blocks_b, blocks_aligned);
+    printf("  Required cache blocks:\n");
+    printf("    Vector A: %d blocks (aligned would use %d)\n", blocks_a, blocks_aligned);
+    printf("    Vector B: %d blocks (aligned would use %d)\n", blocks_b, blocks_aligned);
     if (blocks_a > blocks_aligned || blocks_b > blocks_aligned) {
-    printf("    Advertencia: el desalineamiento causa bloques extra de caché\n");
+        printf("    Warning: misalignment causes extra cache blocks\n");
     }
     
     // ========================================================================
     // Cargar vectores desde archivos CSV
     // ========================================================================
-    printf("\n[DotProd] Cargando vectores desde archivos CSV\n");
+        printf("\n[DotProd] Loading vectors from CSV files\n");
     
-    // Buffers temporales para cargar los vectores
+    // Temporary buffers to load vectors
     double* vec_a_buffer = (double*)malloc(VECTOR_SIZE * sizeof(double));
     double* vec_b_buffer = (double*)malloc(VECTOR_SIZE * sizeof(double));
     
     if (!vec_a_buffer || !vec_b_buffer) {
-    fprintf(stderr, "[DotProd] ERROR: no se pudo asignar memoria para buffers\n");
+        LOGE("Could not allocate memory for vector buffers");
         pthread_mutex_unlock(&mem->mutex);
         return;
     }
@@ -112,20 +114,20 @@ void dotprod_init_data(Memory* mem) {
     // Cargar Vector A
     VectorLoadResult result_a = load_vector_from_csv(VECTOR_A_FILE, vec_a_buffer, VECTOR_SIZE);
     if (!result_a.success) {
-    fprintf(stderr, "[DotProd] ERROR cargando vector A: %s\n", result_a.error_message);
-        fprintf(stderr, "[DotProd] El programa no puede continuar sin vectores válidos\n");
+        LOGE("Error loading vector A: %s", result_a.error_message);
+        LOGE("Program cannot continue without valid vectors");
         free(vec_a_buffer);
         free(vec_b_buffer);
         pthread_mutex_unlock(&mem->mutex);
         return;
     }
     
-    printf("[DotProd] Vector A cargado desde '%s' (%d valores)\n", 
+    printf("[DotProd] Vector A loaded from '%s' (%d values)\n", 
         VECTOR_A_FILE, result_a.values_read);
     
-    // Si se leyeron menos valores de los necesarios, rellenar con ceros
+    // If fewer values were read than needed, fill with zeros
     if (result_a.values_read < VECTOR_SIZE) {
-    printf("[DotProd] Solo se leyeron %d/%d valores, rellenando con 0.0\n",
+        printf("[DotProd] Only %d/%d values read, filling with 0.0\n",
                result_a.values_read, VECTOR_SIZE);
         for (int i = result_a.values_read; i < VECTOR_SIZE; i++) {
             vec_a_buffer[i] = 0.0;
@@ -135,20 +137,20 @@ void dotprod_init_data(Memory* mem) {
     // Cargar Vector B
     VectorLoadResult result_b = load_vector_from_csv(VECTOR_B_FILE, vec_b_buffer, VECTOR_SIZE);
     if (!result_b.success) {
-    fprintf(stderr, "[DotProd] ERROR cargando vector B: %s\n", result_b.error_message);
-        fprintf(stderr, "[DotProd] El programa no puede continuar sin vectores válidos\n");
+        LOGE("Error loading vector B: %s", result_b.error_message);
+        LOGE("Program cannot continue without valid vectors");
         free(vec_a_buffer);
         free(vec_b_buffer);
         pthread_mutex_unlock(&mem->mutex);
         return;
     }
     
-    printf("[DotProd] Vector B cargado desde '%s' (%d valores)\n", 
+    printf("[DotProd] Vector B loaded from '%s' (%d values)\n", 
         VECTOR_B_FILE, result_b.values_read);
     
-    // Si se leyeron menos valores de los necesarios, rellenar con ceros
+    // If fewer values were read than needed, fill with zeros
     if (result_b.values_read < VECTOR_SIZE) {
-    printf("[DotProd] Solo se leyeron %d/%d valores, rellenando con 0.0\n",
+        printf("[DotProd] Only %d/%d values read, filling with 0.0\n",
                result_b.values_read, VECTOR_SIZE);
         for (int i = result_b.values_read; i < VECTOR_SIZE; i++) {
             vec_b_buffer[i] = 0.0;
@@ -166,17 +168,17 @@ void dotprod_init_data(Memory* mem) {
         mem->data[VECTOR_B_ADDR + i] = vec_b_buffer[i];
     }
     
-    // Liberar buffers temporales
+    // Free temporary buffers
     free(vec_a_buffer);
     free(vec_b_buffer);
     
-    // Cálculo esperado (producto punto real de los vectores cargados)
+    // Expected calculation (true dot product of loaded vectors)
     double expected = 0.0;
     for (int i = 0; i < VECTOR_SIZE; i++) {
         expected += mem->data[VECTOR_A_ADDR + i] * mem->data[VECTOR_B_ADDR + i];
     }
-    printf("[DotProd] Resultado esperado: %.2f\n", expected);
-    printf("[DotProd] Inicialización de datos completa\n\n");
+    printf("[DotProd] Expected result: %.2f\n", expected);
+        printf("[DotProd] Data initialization complete\n\n");
     
     pthread_mutex_unlock(&mem->mutex);
 }
@@ -189,15 +191,14 @@ double dotprod_get_result(Memory* mem) {
 }
 
 void dotprod_print_results(Memory* mem) {
-    // Ya no necesitamos hacer flush manual, porque HALT ya hizo writeback
-    // de todas las líneas modificadas a través del bus
+    // No need for a manual flush; HALT already wrote back all modified lines via the bus
     
     pthread_mutex_lock(&mem->mutex);
     
-    printf("\n[Resultados del producto punto]\n");
+    printf("\n[Dot product results]\n");
     
-    // Imprimir vectores de entrada
-    printf("\nVectores de entrada:\n");
+    // Print input vectors
+    printf("\nInput vectors:\n");
     printf("  Vector A: [");
     for (int i = 0; i < VECTOR_SIZE; i++) {
         printf("%.0f", mem->data[VECTOR_A_ADDR + i]);
@@ -212,36 +213,36 @@ void dotprod_print_results(Memory* mem) {
     }
     printf("]\n");
     
-    // Imprimir resultados parciales
-    printf("\nProductos parciales (por PE):\n");
+    // Print partial products
+    printf("\nPartial products (per PE):\n");
     for (int pe = 0; pe < NUM_PES; pe++) {
         int start_elem = pe * SEGMENT_SIZE_WORKER;
         int end_elem = start_elem + SEGMENT_SIZE_WORKER - 1;
-        int addr = RESULTS_ADDR + pe;  // Compactos: direcciones consecutivas
+    int addr = RESULTS_ADDR + pe;  // Compact: consecutive addresses
         printf("  PE%d (elements %d-%d):   %.2f (addr %d)\n", 
                pe, start_elem, end_elem, mem->data[addr], addr);
     }
     
-    // Resultado final
+    // Final result
     double final_result = mem->data[FINAL_RESULT_ADDR];
-    printf("\nProducto punto final: %.2f (addr %d)\n", final_result, FINAL_RESULT_ADDR);
+    printf("\nFinal dot product: %.2f (addr %d)\n", final_result, FINAL_RESULT_ADDR);
     
-    // Verificación (calcular producto punto esperado de los vectores reales)
+    // Verification (compute expected dot product from the loaded vectors)
     double expected = 0.0;
     for (int i = 0; i < VECTOR_SIZE; i++) {
         expected += mem->data[VECTOR_A_ADDR + i] * mem->data[VECTOR_B_ADDR + i];
     }
     
     double error = final_result - expected;
-    printf("\nVerificación:\n");
-    printf("  Esperado: %.2f\n", expected);
-    printf("  Calculado: %.2f\n", final_result);
+    printf("\nVerification:\n");
+    printf("  Expected: %.2f\n", expected);
+    printf("  Calculated: %.2f\n", final_result);
     printf("  Error: %.10f\n", error);
     
     if (error < 0.0001 && error > -0.0001) {
-    printf("  Estado: CORRECTO\n");
+        printf("  Status: CORRECT\n");
     } else {
-    printf("  Estado: INCORRECTO\n");
+        printf("  Status: INCORRECT\n");
     }
     
     printf("\n");

@@ -11,13 +11,13 @@
 
 int main() {
     log_init();
-    LOGI("Iniciando simulador MESI - Producto punto paralelo");
+    LOGI("Starting MESI simulator - Parallel dot product");
     
     // Inicializar memoria y crear su thread
     Memory mem;
     mem_init(&mem);
     
-    // ===== INICIALIZAR DATOS DEL PRODUCTO PUNTO =====
+    // ===== INITIALIZE DOT PRODUCT DATA =====
     dotprod_init_data(&mem);
     
     pthread_t mem_thread;
@@ -33,66 +33,65 @@ int main() {
     for (int i = 0; i < NUM_PES; i++) {
         cache_init(&caches[i]);
         caches[i].bus = &bus;
-        caches[i].pe_id = i;  // Asignar ID del PE
+    caches[i].pe_id = i;  // Assign PE ID
     }
 
-    // Inicializar bus con referencia a memoria
+    // Initialize bus with memory reference
     Cache* cache_ptrs[NUM_PES];
     for (int i = 0; i < NUM_PES; i++)
         cache_ptrs[i] = &caches[i];
     bus_init(&bus, cache_ptrs, &mem);
 
-    // Crear thread del bus
+    // Create bus thread
     pthread_create(&bus_thread, NULL, bus_thread_func, &bus);
 
-    // Inicializar y crear threads de PEs
+    // Initialize and create PE threads
     for (int i = 0; i < NUM_PES; i++) {
         pes[i].id = i;
         pes[i].cache = &caches[i];
-        reg_init(&pes[i].rf);  // Inicializar banco de registros
+    reg_init(&pes[i].rf);  // Initialize register file
         pthread_create(&pe_threads[i], NULL, pe_run, &pes[i]);
     }
 
-    // Esperar hilos de PEs
+    // Join PE threads
     for (int i = 0; i < NUM_PES; i++)
         pthread_join(pe_threads[i], NULL);
 
-    LOGI("Todos los PEs finalizaron la ejecución");
+    LOGI("All PEs finished execution");
 
-    // ===== MOSTRAR RESULTADOS DEL PRODUCTO PUNTO =====
-    // Los PEs ya hicieron writeback en HALT a través del bus
-    // por lo que todos los datos modificados están en memoria principal
+    // ===== SHOW DOT PRODUCT RESULTS =====
+    // PEs already did writeback on HALT via the bus, so all modified data is in main memory
     dotprod_print_results(&mem);
 
-    // Terminar el bus y esperar su thread
+    // Stop bus and join its thread
     bus_destroy(&bus);
     pthread_join(bus_thread, NULL);
 
-    // Terminar memoria y esperar su thread
+    // Stop memory and join its thread
     mem_destroy(&mem);
     pthread_join(mem_thread, NULL);
 
-    // Imprimir estadísticas de cada PE
-    LOGI("Mostrando estadísticas del simulador");
+    // Print per-PE statistics
+    LOGI("Printing simulator statistics");
     
     for (int i = 0; i < NUM_PES; i++) {
         stats_print(&caches[i].stats, i);
     }
     
-    // Imprimir resumen comparativo
+    // Print comparative summary
     CacheStats stats_array[NUM_PES];
     for (int i = 0; i < NUM_PES; i++) {
         stats_array[i] = caches[i].stats;
     }
     stats_print_summary(stats_array, NUM_PES);
 
-    // Imprimir estadísticas de memoria
+    // Print memory statistics
     memory_stats_print(&mem.stats);
 
-    // Imprimir estadísticas del bus
+    // Print bus statistics
     bus_stats_print(&bus.stats);
 
-    // Limpiar recursos
+    // Cleanup resources
     for (int i = 0; i < NUM_PES; i++) {
         cache_destroy(&caches[i]);
     }

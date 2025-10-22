@@ -1,6 +1,7 @@
 #include "bus_stats.h"
 #include <stdio.h>
 #include <string.h>
+#include "log.h"
 
 void bus_stats_init(BusStats* stats) {
     memset(stats, 0, sizeof(BusStats));
@@ -53,23 +54,29 @@ void bus_stats_record_control_transfer(BusStats* stats, int bytes) {
 }
 
 void bus_stats_print(const BusStats* stats) {
-    printf("\n[Estadísticas del bus]\n");
-    printf("Transacciones: BUS_RD=%lu BUS_RDX=%lu BUS_UPGR=%lu BUS_WB=%lu Total=%lu\n",
+    const char* B = log_color_bold();
+    const char* BLUE = log_color_blue();
+    const char* RESET = log_color_reset();
+
+    printf("\n%s[Bus statistics]%s\n", BLUE, RESET);
+    printf("%sTransactions%s: BUS_RD=%lu BUS_RDX=%lu BUS_UPGR=%lu BUS_WB=%lu Total=%lu\n",
+           B, RESET,
            stats->bus_rd_count, stats->bus_rdx_count, stats->bus_upgr_count,
            stats->bus_wb_count, stats->total_transactions);
-    printf("Coherencia: invalidaciones_broadcast=%lu\n", stats->invalidations_sent);
+    printf("%sCoherence%s: broadcast_invalidations=%lu\n", B, RESET, stats->invalidations_sent);
 
     double traffic_kb = stats->bytes_transferred / 1024.0;
     double traffic_mb = traffic_kb / 1024.0;
     double data_kb = stats->bytes_data / 1024.0;
     double control_kb = stats->bytes_control / 1024.0;
 
-    printf("Tráfico: datos=%lu (%.2f KB) control=%lu (%.2f KB) total=%lu (%.2f KB, %.6f MB)\n",
+    printf("%sTraffic%s: data=%lu (%.2f KB) control=%lu (%.2f KB) total=%lu (%.2f KB, %.6f MB)\n",
+           B, RESET,
            stats->bytes_data, data_kb,
            stats->bytes_control, control_kb,
            stats->bytes_transferred, traffic_kb, traffic_mb);
 
-    printf("Uso por PE (transacciones y %%):\n");
+    printf("%sUsage per PE%s (transactions and %%):\n", B, RESET);
     for (int i = 0; i < 4; i++) {
         double percentage = stats->total_transactions > 0 ?
             (100.0 * stats->transactions_per_pe[i] / stats->total_transactions) : 0.0;
@@ -80,7 +87,7 @@ void bus_stats_print(const BusStats* stats) {
         double avg_bytes_per_transaction = (double)stats->bytes_transferred / stats->total_transactions;
         double read_ratio = (100.0 * stats->bus_rd_count) / stats->total_transactions;
         double write_ratio = (100.0 * (stats->bus_rdx_count + stats->bus_wb_count)) / stats->total_transactions;
-        printf("Eficiencia: bytes/transacción=%.2f lecturas=%.2f%% escrituras=%.2f%%\n",
-               avg_bytes_per_transaction, read_ratio, write_ratio);
+        printf("%sEfficiency%s: bytes/transaction=%.2f reads=%.2f%% writes=%.2f%%\n",
+               B, RESET, avg_bytes_per_transaction, read_ratio, write_ratio);
     }
 }

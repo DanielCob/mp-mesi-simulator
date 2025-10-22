@@ -1,8 +1,10 @@
+#define LOG_MODULE "LOADER"
 #include "loader.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "log.h"
 
 #define MAX_LINE_LENGTH 256
 #define INITIAL_CAPACITY 64
@@ -10,15 +12,15 @@
 #define MAX_LABEL_NAME 64
 
 /**
- * @brief Estructura para almacenar labels
+ * @brief Structure to store labels
  */
 typedef struct {
     char name[MAX_LABEL_NAME];
-    int line_number;  // Número de instrucción (no de línea de archivo)
+    int line_number;  // Instruction index (not file line number)
 } Label;
 
 /**
- * @brief Tabla de labels
+ * @brief Label table
  */
 typedef struct {
     Label labels[MAX_LABELS];
@@ -26,25 +28,25 @@ typedef struct {
 } LabelTable;
 
 /**
- * @brief Inicializa la tabla de labels
+ * @brief Initialize label table
  */
 static void init_label_table(LabelTable* table) {
     table->count = 0;
 }
 
 /**
- * @brief Añade un label a la tabla
+ * @brief Add a label to the table
  */
 static int add_label(LabelTable* table, const char* name, int line_number) {
     if (table->count >= MAX_LABELS) {
-    fprintf(stderr, "[Loader] ERROR: demasiados labels (máximo %d)\n", MAX_LABELS);
+        LOGE("Too many labels (max %d)", MAX_LABELS);
         return -1;
     }
     
-    // Verificar si el label ya existe
+    // Check if label already exists
     for (int i = 0; i < table->count; i++) {
         if (strcmp(table->labels[i].name, name) == 0) {
-            fprintf(stderr, "[Loader] ERROR: label duplicado: %s\n", name);
+            LOGE("Duplicate label: %s", name);
             return -1;
         }
     }
@@ -58,8 +60,8 @@ static int add_label(LabelTable* table, const char* name, int line_number) {
 }
 
 /**
- * @brief Busca un label en la tabla
- * @return Número de línea del label, o -1 si no se encuentra
+ * @brief Find a label in the table
+ * @return Label instruction index, or -1 if not found
  */
 static int find_label(const LabelTable* table, const char* name) {
     for (int i = 0; i < table->count; i++) {
@@ -71,7 +73,7 @@ static int find_label(const LabelTable* table, const char* name) {
 }
 
 /**
- * @brief Convierte OpCode a string (versión local)
+ * @brief Convert OpCode to string (local)
  */
 static const char* opcode_to_string_local(OpCode op) {
     switch (op) {
@@ -89,15 +91,15 @@ static const char* opcode_to_string_local(OpCode op) {
 }
 
 /**
- * @brief Elimina espacios en blanco al inicio y final de una cadena
+ * @brief Trim whitespace at both ends of string
  */
 static char* trim(char* str) {
-    // Trim inicial
+    // Trim start
     while (isspace((unsigned char)*str)) str++;
     
     if (*str == 0) return str;
     
-    // Trim final
+    // Trim end
     char* end = str + strlen(str) - 1;
     while (end > str && isspace((unsigned char)*end)) end--;
     
@@ -106,7 +108,7 @@ static char* trim(char* str) {
 }
 
 /**
- * @brief Convierte un string de opcode a OpCode enum
+ * @brief Convert opcode string to OpCode enum
  */
 static OpCode parse_opcode(const char* str) {
     if (strcmp(str, "MOV") == 0)   return OP_MOV;
@@ -118,11 +120,11 @@ static OpCode parse_opcode(const char* str) {
     if (strcmp(str, "DEC") == 0)   return OP_DEC;
     if (strcmp(str, "JNZ") == 0)   return OP_JNZ;
     if (strcmp(str, "HALT") == 0)  return OP_HALT;
-    return OP_HALT; // Default para opcodes no reconocidos
+    return OP_HALT; // Default for unrecognized opcodes
 }
 
 /**
- * @brief Parsea un número de registro (R0-R7) a su índice
+ * @brief Parse a register number (R0-R7) into its index
  */
 static int parse_register(const char* str) {
     if (str[0] != 'R' && str[0] != 'r') return -1;
@@ -134,40 +136,40 @@ static int parse_register(const char* str) {
 }
 
 /**
- * @brief Verifica si una línea contiene un label (formato "NOMBRE:")
- * @param rest Si no es NULL, almacena el resto de la línea después del ':'
- * @return Puntero al nombre del label (sin el :) o NULL si no es un label
+ * @brief Check if a line contains a label (format "NAME:")
+ * @param rest If not NULL, stores the rest of the line after ':'
+ * @return Pointer to the label name (without ':'), or NULL if not a label
  */
 static char* extract_label(char* line, char* label_name, char* rest) {
     char* trimmed = trim(line);
     
-    // Buscar el carácter ':'
+    // Look for ':'
     char* colon = strchr(trimmed, ':');
     if (!colon) return NULL;
     
-    // Extraer el nombre del label (todo antes del ':')
+    // Extract label name (everything before ':')
     size_t len = colon - trimmed;
     if (len == 0 || len >= MAX_LABEL_NAME) return NULL;
     
     strncpy(label_name, trimmed, len);
     label_name[len] = '\0';
     
-    // Trim el nombre del label
+    // Trim the label name
     char* label_trimmed = trim(label_name);
     
-    // Verificar que el nombre del label sea válido (solo letras, números y _)
+    // Validate name (alphanumeric and _ only)
     for (size_t i = 0; i < strlen(label_trimmed); i++) {
         if (!isalnum(label_trimmed[i]) && label_trimmed[i] != '_') {
             return NULL;
         }
     }
     
-    // Copiar de vuelta
+    // Copy back
     if (label_trimmed != label_name) {
         strcpy(label_name, label_trimmed);
     }
     
-    // Si se solicita, extraer el resto de la línea después del ':'
+    // If requested, extract rest of line after ':'
     if (rest) {
         char* after_colon = colon + 1;
         strcpy(rest, trim(after_colon));
@@ -177,48 +179,48 @@ static char* extract_label(char* line, char* label_name, char* rest) {
 }
 
 /**
- * @brief Parsea una línea de assembly en una instrucción
- * @param label_table Tabla de labels para resolver referencias
- * @return 1 si se parseó exitosamente, 0 si es línea vacía/comentario/label, -1 si error
+ * @brief Parse an assembly line into an instruction
+ * @param label_table Label table to resolve references
+ * @return 1 on success, 0 if empty/comment/label, -1 on error
  */
 static int parse_line(const char* line, Instruction* inst, const LabelTable* label_table) {
     char line_copy[MAX_LINE_LENGTH];
     strncpy(line_copy, line, MAX_LINE_LENGTH - 1);
     line_copy[MAX_LINE_LENGTH - 1] = '\0';
     
-    // Eliminar comentarios
+    // Remove comments
     char* comment = strchr(line_copy, '#');
     if (comment) *comment = '\0';
     
-    // Verificar si es un label (y omitirlo en la segunda pasada)
+    // Check if it's a label (and skip it in the second pass)
     char label_name[MAX_LABEL_NAME];
     char rest[MAX_LINE_LENGTH];
     if (extract_label(line_copy, label_name, rest)) {
-        // Es un label, verificar si hay instrucción después del ':'
+        // It's a label; check if there's an instruction after ':'
         if (strlen(rest) == 0) {
-            return 0; // Solo label, sin instrucción
+            return 0; // Only label, no instruction
         }
-        // Hay instrucción después del label, parsear el resto
+        // Instruction after label, parse the rest
         strcpy(line_copy, rest);
     }
     
     // Trim
     char* trimmed = trim(line_copy);
-    if (strlen(trimmed) == 0) return 0; // Línea vacía
+    if (strlen(trimmed) == 0) return 0; // Empty line
     
-    // Parsear opcode
+    // Parse opcode
     char opcode_str[16];
     if (sscanf(trimmed, "%15s", opcode_str) != 1) return 0;
     
     OpCode op = parse_opcode(opcode_str);
     
-    // Verificar si el opcode es válido
+    // Check opcode validity
     if (op == OP_HALT && strcmp(opcode_str, "HALT") != 0) {
-        // parse_opcode devolvió HALT como default, pero no es un HALT real
-        return 0; // Ignorar línea
+        // parse_opcode returned HALT by default, but it's not a real HALT
+        return 0; // Ignore line
     }
     
-    // Inicializar instrucción con valores por defecto
+    // Initialize instruction with defaults
     inst->op = op;
     inst->rd = 0;
     inst->ra = 0;
@@ -229,7 +231,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
     inst->addr_mode = ADDR_DIRECT;
     inst->label = 0;
     
-    // Parsear operandos según el tipo de instrucción
+    // Parse operands according to instruction type
     char* operands = trimmed + strlen(opcode_str);
     operands = trim(operands);
     
@@ -243,12 +245,12 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7[^,], %lf", reg1, &imm_value) == 2) {
                 inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: registro inválido en MOV: %s\n", reg1);
+                    LOGE("Invalid register in MOV: %s", reg1);
                     return -1;
                 }
                 inst->imm = imm_value;
             } else {
-                fprintf(stderr, "[Loader] ERROR: formato inválido para MOV: %s\n", operands);
+                LOGE("Invalid format for MOV: %s", operands);
                 return -1;
             }
             break;
@@ -258,28 +260,27 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7[^,], [%31[^]]]", reg1, addr_str) == 2) {
                 inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: registro inválido en LOAD: %s\n", reg1);
+                    LOGE("Invalid register in LOAD: %s", reg1);
                     return -1;
                 }
                 
-                // Determinar si es directo [número] o indirecto [Rx]
+                // Determine if direct [number] or indirect [Rx]
                 char* trimmed_addr = trim(addr_str);
                 if (trimmed_addr[0] == 'R' || trimmed_addr[0] == 'r') {
-                    // Es direccionamiento indirecto [Rx]
+                    // Indirect addressing [Rx]
                     inst->addr_reg = parse_register(trimmed_addr);
                     if (inst->addr_reg < 0) {
-            fprintf(stderr, "[Loader] ERROR: registro de dirección inválido en LOAD: [%s]\n", 
-                                trimmed_addr);
+                        LOGE("Invalid address register in LOAD: [%s]", trimmed_addr);
                         return -1;
                     }
                     inst->addr_mode = ADDR_REGISTER;
                 } else {
-                    // Es direccionamiento directo [número]
+                    // Direct addressing [number]
                     inst->addr = atoi(trimmed_addr);
                     inst->addr_mode = ADDR_DIRECT;
                 }
             } else {
-                fprintf(stderr, "[Loader] ERROR: formato inválido para LOAD (use [addr] o [Rx]): %s\n", operands);
+                LOGE("Invalid format for LOAD (use [addr] or [Rx]): %s", operands);
                 return -1;
             }
             break;
@@ -289,28 +290,27 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7[^,], [%31[^]]]", reg1, addr_str) == 2) {
                 inst->rd = parse_register(reg1);  // rd se usa como source en STORE
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: registro inválido en STORE: %s\n", reg1);
+                    LOGE("Invalid register in STORE: %s", reg1);
                     return -1;
                 }
                 
-                // Determinar si es directo [número] o indirecto [Rx]
+                // Determine if direct [number] or indirect [Rx]
                 char* trimmed_addr = trim(addr_str);
                 if (trimmed_addr[0] == 'R' || trimmed_addr[0] == 'r') {
-                    // Es direccionamiento indirecto [Rx]
+                    // Indirect addressing [Rx]
                     inst->addr_reg = parse_register(trimmed_addr);
                     if (inst->addr_reg < 0) {
-            fprintf(stderr, "[Loader] ERROR: registro de dirección inválido en STORE: [%s]\n", 
-                                trimmed_addr);
+                        LOGE("Invalid address register in STORE: [%s]", trimmed_addr);
                         return -1;
                     }
                     inst->addr_mode = ADDR_REGISTER;
                 } else {
-                    // Es direccionamiento directo [número]
+                    // Direct addressing [number]
                     inst->addr = atoi(trimmed_addr);
                     inst->addr_mode = ADDR_DIRECT;
                 }
             } else {
-                fprintf(stderr, "[Loader] ERROR: formato inválido para STORE (use [addr] o [Rx]): %s\n", operands);
+                LOGE("Invalid format for STORE (use [addr] or [Rx]): %s", operands);
                 return -1;
             }
             break;
@@ -323,13 +323,11 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                 inst->ra = parse_register(reg2);
                 inst->rb = parse_register(reg3);
                 if (inst->rd < 0 || inst->ra < 0 || inst->rb < 0) {
-            fprintf(stderr, "[Loader] ERROR: registro inválido en %s: %s %s %s\n",
-                            opcode_str, reg1, reg2, reg3);
+                    LOGE("Invalid register in %s: %s %s %s", opcode_str, reg1, reg2, reg3);
                     return -1;
                 }
             } else {
-        fprintf(stderr, "[Loader] ERROR: formato inválido para %s: %s\n", 
-                        opcode_str, operands);
+                LOGE("Invalid format for %s: %s", opcode_str, operands);
                 return -1;
             }
             break;
@@ -340,13 +338,11 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7s", reg1) == 1) {
                 inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
-            fprintf(stderr, "[Loader] ERROR: registro inválido en %s: %s\n",
-                            opcode_str, reg1);
+                    LOGE("Invalid register in %s: %s", opcode_str, reg1);
                     return -1;
                 }
             } else {
-        fprintf(stderr, "[Loader] ERROR: formato inválido para %s: %s\n",
-                        opcode_str, operands);
+                LOGE("Invalid format for %s: %s", opcode_str, operands);
                 return -1;
             }
             break;
@@ -370,13 +366,13 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                         // Es un nombre de label, buscar en la tabla
                         int label_line = find_label(label_table, label_str);
                         if (label_line < 0) {
-                            fprintf(stderr, "[Loader] ERROR: label no encontrado: %s\n", label_str);
+                            LOGE("Label not found: %s", label_str);
                             return -1;
                         }
                         inst->label = label_line;
                     }
                 } else {
-                    fprintf(stderr, "[Loader] ERROR: formato inválido para JNZ: %s\n", operands);
+                    LOGE("Invalid format for JNZ: %s", operands);
                     return -1;
                 }
             }
@@ -387,23 +383,23 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             break;
             
         default:
-            fprintf(stderr, "[Loader] ERROR: opcode no reconocido: %s\n", opcode_str);
+            LOGE("Unrecognized opcode: %s", opcode_str);
             return -1;
     }
     
-    return 1; // Éxito
+    return 1; // Success
 }
 
 Program* load_program(const char* filename) {
     FILE* file = fopen(filename, "r");
     if (!file) {
-    fprintf(stderr, "[Loader] ERROR: no se pudo abrir el archivo: %s\n", filename);
+        LOGE("Failed to open file: %s", filename);
         return NULL;
     }
     
-    printf("[Loader] Cargando programa: %s\n", filename);
+    LOGI("Loading program: %s", filename);
     
-    // ===== PRIMERA PASADA: Recolectar labels =====
+    // ===== FIRST PASS: Collect labels =====
     LabelTable label_table;
     init_label_table(&label_table);
     
@@ -414,7 +410,7 @@ Program* load_program(const char* filename) {
     while (fgets(line, MAX_LINE_LENGTH, file)) {
         line_num++;
         
-        // Eliminar comentarios
+        // Remove comments
         char line_copy[MAX_LINE_LENGTH];
         strncpy(line_copy, line, MAX_LINE_LENGTH - 1);
         line_copy[MAX_LINE_LENGTH - 1] = '\0';
@@ -422,18 +418,18 @@ Program* load_program(const char* filename) {
         char* comment = strchr(line_copy, '#');
         if (comment) *comment = '\0';
         
-        // Verificar si es un label
+        // Check if it's a label
         char label_name[MAX_LABEL_NAME];
         char rest[MAX_LINE_LENGTH];
         if (extract_label(line_copy, label_name, rest)) {
-            // Es un label, añadirlo a la tabla
+            // It's a label, add to table
             if (add_label(&label_table, label_name, instruction_count) < 0) {
                 fclose(file);
                 return NULL;
             }
-            printf("[Loader]   Etiqueta '%s' -> línea %d\n", label_name, instruction_count);
+            LOGD("  Label '%s' -> line %d", label_name, instruction_count);
             
-            // Verificar si hay una instrucción en la misma línea después del label
+            // Check for instruction on same line after label
             if (strlen(rest) > 0) {
                 char opcode[16];
                 if (sscanf(rest, "%15s", opcode) == 1) {
@@ -446,13 +442,13 @@ Program* load_program(const char* filename) {
             continue;
         }
         
-        // Si no es un label, verificar si es una instrucción válida
+        // Not a label, check if it's a valid instruction
         char* trimmed = trim(line_copy);
         if (strlen(trimmed) > 0) {
-            // Es una instrucción (no vacía), incrementar contador
+            // Non-empty instruction, increment counter
             char opcode[16];
             if (sscanf(trimmed, "%15s", opcode) == 1) {
-                // Verificar que sea un opcode válido
+                // Validate opcode
                 OpCode op = parse_opcode(opcode);
                 if (op != OP_HALT || strcmp(opcode, "HALT") == 0) {
                     instruction_count++;
@@ -461,17 +457,17 @@ Program* load_program(const char* filename) {
         }
     }
     
-    printf("[Loader]   Encontrados %d labels\n", label_table.count);
+    LOGD("  Found %d labels", label_table.count);
     
     // Volver al inicio del archivo para la segunda pasada
     rewind(file);
     
-    // ===== SEGUNDA PASADA: Parsear instrucciones =====
+    // ===== SECOND PASS: Parse instructions =====
     
-    // Crear programa con capacidad inicial
+    // Create program with initial capacity
     Program* prog = (Program*)malloc(sizeof(Program));
     if (!prog) {
-        fprintf(stderr, "[Loader] ERROR: No se pudo asignar memoria para el programa\n");
+        LOGE("Could not allocate memory for program");
         fclose(file);
         return NULL;
     }
@@ -479,7 +475,7 @@ Program* load_program(const char* filename) {
     int capacity = INITIAL_CAPACITY;
     prog->code = (Instruction*)malloc(capacity * sizeof(Instruction));
     if (!prog->code) {
-        fprintf(stderr, "[Loader] ERROR: No se pudo asignar memoria para las instrucciones\n");
+        LOGE("Could not allocate memory for instructions");
         free(prog);
         fclose(file);
         return NULL;
@@ -495,7 +491,7 @@ Program* load_program(const char* filename) {
         int result = parse_line(line, &inst, &label_table);
         
         if (result < 0) {
-            fprintf(stderr, "[Loader] ERROR en línea %d: %s", line_num, line);
+            LOGE("Error at line %d: %s", line_num, line);
             free(prog->code);
             free(prog);
             fclose(file);
@@ -510,7 +506,7 @@ Program* load_program(const char* filename) {
             Instruction* new_code = (Instruction*)realloc(prog->code, 
                                                           capacity * sizeof(Instruction));
             if (!new_code) {
-                fprintf(stderr, "[Loader] ERROR: No se pudo expandir memoria para instrucciones\n");
+                LOGE("Could not expand memory for instructions");
                 free(prog->code);
                 free(prog);
                 fclose(file);
@@ -524,7 +520,7 @@ Program* load_program(const char* filename) {
     
     fclose(file);
     
-    printf("[Loader] Programa cargado exitosamente: %d instrucciones\n", prog->size);
+    LOGI("Program loaded: %d instructions", prog->size);
     
     return prog;
 }
@@ -540,17 +536,17 @@ void free_program(Program* prog) {
 
 void print_program(const Program* prog) {
     if (!prog) {
-        printf("[Loader] Programa NULL\n");
+        LOGW("Program is NULL");
         return;
     }
     
-    printf("\n[Programa cargado: %d instrucciones]\n", prog->size);
+    printf("\n[Program loaded: %d instructions]\n", prog->size);
     
     for (int i = 0; i < prog->size; i++) {
         Instruction* inst = &prog->code[i];
         const char* op_name = opcode_to_string_local(inst->op);
         
-    printf("[%3d] %-8s ", i, op_name);
+        printf("[%3d] %-8s ", i, op_name);
         
         switch (inst->op) {
             case OP_MOV:
@@ -579,7 +575,7 @@ void print_program(const Program* prog) {
                 printf("R%d", inst->rd);
                 break;
             case OP_JNZ:
-                printf("%d (usa zero_flag)", inst->label);
+                printf("%d (uses zero_flag)", inst->label);
                 break;
             case OP_HALT:
                 break;

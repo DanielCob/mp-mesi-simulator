@@ -21,7 +21,7 @@ void mem_init(Memory* mem) {
     mem->running = true;
     mem->current_request.processed = false;
     
-    LOGI("Inicializada");
+    LOGI("Initialized");
 }
 
 void mem_destroy(Memory* mem) {
@@ -36,7 +36,7 @@ void mem_destroy(Memory* mem) {
 
 void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) {
     if (!IS_ALIGNED(addr)) {
-        LOGW("lectura de bloque: dirección %d no alineada (ajustando)", addr);
+    LOGW("block read: unaligned address %d (adjusting)", addr);
         addr = ALIGN_DOWN(addr);
     }
     
@@ -71,7 +71,7 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) 
 
 void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int pe_id) {
     if (!IS_ALIGNED(addr)) {
-        LOGW("escritura de bloque: dirección %d no alineada (ajustando)", addr);
+    LOGW("block write: unaligned address %d (adjusting)", addr);
         addr = ALIGN_DOWN(addr);
     }
     
@@ -106,7 +106,7 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
 
 void* mem_thread_func(void* arg) {
     Memory* mem = (Memory*)arg;
-    LOGD("Thread iniciado");
+    LOGD("Thread started");
     
     while (mem->running) {
         pthread_mutex_lock(&mem->mutex);
@@ -126,7 +126,7 @@ void* mem_thread_func(void* arg) {
         
         // Procesar solicitud (fuera del lock para permitir otras operaciones)
         if (req->op == MEM_OP_READ_BLOCK) {
-          LOGD("READ_BLOCK addr=%d (%d doubles) desde PE%d", 
+          LOGD("READ_BLOCK addr=%d (%d doubles) from PE%d", 
               req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 req->block[i] = mem->data[req->addr + i];
@@ -134,7 +134,7 @@ void* mem_thread_func(void* arg) {
             memory_stats_record_read(&mem->stats, req->pe_id, BLOCK_SIZE * sizeof(double));
         } 
         else if (req->op == MEM_OP_WRITE_BLOCK) {
-          LOGD("WRITE_BLOCK addr=%d (%d doubles) desde PE%d", 
+          LOGD("WRITE_BLOCK addr=%d (%d doubles) from PE%d", 
               req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 mem->data[req->addr + i] = req->block[i];
@@ -152,6 +152,6 @@ void* mem_thread_func(void* arg) {
         pthread_mutex_unlock(&mem->mutex);
     }
     
-    LOGD("Thread terminado");
+    LOGD("Thread finished");
     return NULL;
 }

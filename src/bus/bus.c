@@ -29,7 +29,7 @@ void bus_init(Bus* bus, Cache* caches[], Memory* memory) {
 
     bus_register_handlers(bus);
 
-    LOGI("Inicializado (planificación round-robin)");
+    LOGI("Initialized (round-robin scheduling)");
 }
 
 void bus_destroy(Bus* bus) {
@@ -82,7 +82,7 @@ void bus_broadcast_with_callback(Bus* bus, BusMsg msg, int addr, int src_pe,
 
 void* bus_thread_func(void* arg) {
     Bus* bus = (Bus*)arg;
-    LOGD("Thread iniciado (round-robin)");
+    LOGD("Thread started (round-robin)");
     
     while (bus->running) {
         pthread_mutex_lock(&bus->mutex);
@@ -121,7 +121,7 @@ void* bus_thread_func(void* arg) {
             }
         }
         
-    LOGD("RR: PE%d señal=%d addr=%d", selected_pe, req->msg, req->addr);
+    LOGD("RR: PE%d signal=%d addr=%d", selected_pe, req->msg, req->addr);
         
         // Registrar estadísticas
         switch (req->msg) {
@@ -151,12 +151,12 @@ void* bus_thread_func(void* arg) {
         if (bus->handlers[req->msg]) {
             bus->handlers[req->msg](bus, req->addr, req->src_pe);
         } else {
-            LOGW("Sin handler para señal=%d", req->msg);
+            LOGW("No handler for signal=%d", req->msg);
         }
         
         // Ejecutar callback si fue proporcionado (después del handler)
         if (req->callback) {
-            LOGD("Ejecutando callback para PE%d", selected_pe);
+            LOGD("Executing callback for PE%d", selected_pe);
             req->callback(req->callback_context);
         }
         
@@ -167,6 +167,6 @@ void* bus_thread_func(void* arg) {
         pthread_mutex_unlock(&bus->mutex);
     }
     
-    LOGD("Thread terminado");
+    LOGD("Thread finished");
     return NULL;
 }

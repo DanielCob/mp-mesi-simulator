@@ -6,21 +6,21 @@
 #include <ctype.h>
 #include "log.h"
 
-// Tamaño máximo de línea que se puede leer
+// Maximum line length to read
 #define MAX_LINE_LENGTH 4096
 
 /**
- * Elimina espacios en blanco al inicio y final de una cadena
+ * Trim whitespace at the beginning and end of a string
  */
 static char* trim(char* str) {
     char* end;
     
-    // Eliminar espacios al inicio
+    // Trim start
     while(isspace((unsigned char)*str)) str++;
     
     if(*str == 0) return str;
     
-    // Eliminar espacios al final
+    // Trim end
     end = str + strlen(str) - 1;
     while(end > str && isspace((unsigned char)*end)) end--;
     
@@ -29,7 +29,7 @@ static char* trim(char* str) {
 }
 
 /**
- * Parsea una línea del CSV y extrae los valores
+ * Parse a CSV line and extract values
  */
 static int parse_csv_line(const char* line, double* buffer, int buffer_size, int current_count) {
     char line_copy[MAX_LINE_LENGTH];
@@ -42,12 +42,12 @@ static int parse_csv_line(const char* line, double* buffer, int buffer_size, int
     while (token != NULL && count < buffer_size) {
         token = trim(token);
         
-        // Ignorar tokens vacíos
+        // Ignore empty tokens
         if (strlen(token) > 0) {
             char* endptr;
             double value = strtod(token, &endptr);
             
-            // Verificar si la conversión fue exitosa
+            // Verify conversion succeeded
             if (endptr != token) {
                 buffer[count++] = value;
             }
@@ -69,7 +69,7 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
     FILE* file = fopen(filename, "r");
     if (!file) {
         snprintf(result.error_message, sizeof(result.error_message),
-                "No se pudo abrir el archivo: %s", filename);
+                "Failed to open file: %s", filename);
         return result;
     }
     
@@ -80,19 +80,19 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
     while (fgets(line, sizeof(line), file) && count < max_size) {
         line_number++;
         
-        // Ignorar líneas vacías y comentarios
+        // Ignore empty lines and comments
         char* trimmed = trim(line);
         if (strlen(trimmed) == 0 || trimmed[0] == '#') {
             continue;
         }
         
-        // Parsear la línea
+        // Parse the line
         int old_count = count;
         count = parse_csv_line(trimmed, buffer, max_size, count);
         
-        // Si no se leyó ningún valor, reportar advertencia
+        // If nothing was read, report a warning
         if (count == old_count) {
-            LOGW("Línea %d sin valores válidos", line_number);
+            LOGW("Line %d has no valid values", line_number);
         }
     }
     
@@ -100,7 +100,7 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
     
     if (count == 0) {
         snprintf(result.error_message, sizeof(result.error_message),
-                "No se encontraron valores válidos en: %s", filename);
+                "No valid values found in: %s", filename);
         return result;
     }
     
@@ -110,7 +110,7 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
 }
 
 void print_vector(const char* name, const double* buffer, int size, int start_addr) {
-    printf("[DotProd] Cargando %s en direcciones %d-%d\n  %s = [", 
+    printf("[DotProd] Loading %s into addresses %d-%d\n  %s = [", 
            name, start_addr, start_addr + size - 1, name);
     
     for (int i = 0; i < size; i++) {

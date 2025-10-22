@@ -10,7 +10,7 @@
 
 void* pe_run(void* arg) {
     PE* pe = (PE*)arg;
-    LOGD("PE%d: iniciando hilo", pe->id);
+    LOGD("PE%d: starting thread", pe->id);
     
     // ===== CARGAR PROGRAMA DESDE ARCHIVO =====
     // Cada PE ejecuta su parte del producto punto paralelo
@@ -26,68 +26,19 @@ void* pe_run(void* arg) {
     
     const char* filename = program_files[pe->id];
     
-    LOGI("PE%d: cargando programa", pe->id);
-    LOGD("PE%d: archivo=%s", pe->id, filename);
+    LOGI("PE%d: loading program", pe->id);
+    LOGD("PE%d: file=%s", pe->id, filename);
     
     Program* prog = load_program(filename);
     
     if (!prog) {
-    LOGE("PE%d: no se pudo cargar el programa %s", pe->id, filename);
+    LOGE("PE%d: could not load program %s", pe->id, filename);
         return NULL;
     }
     
-    LOGI("PE%d: programa cargado, instrucciones=%d", pe->id, prog->size);
+    LOGI("PE%d: program loaded, instructions=%d", pe->id, prog->size);
     
-    // Imprimir el programa cargado
-    LOGD("PE%d: contenido del programa (primeras 10)", pe->id);
-    for (int i = 0; i < prog->size && i < 10; i++) {  // Mostrar máximo 10 instrucciones
-        Instruction* inst = &prog->code[i];
-        printf("[PE%d]   [%2d] %s ", pe->id, i, 
-               inst->op == OP_MOV ? "MOV" :
-               inst->op == OP_LOAD ? "LOAD" :
-               inst->op == OP_STORE ? "STORE" :
-               inst->op == OP_FADD ? "FADD" :
-               inst->op == OP_FMUL ? "FMUL" :
-               inst->op == OP_INC ? "INC" :
-               inst->op == OP_DEC ? "DEC" :
-               inst->op == OP_JNZ ? "JNZ" : "HALT");
-        
-        switch (inst->op) {
-            case OP_MOV:
-                printf("R%d, %.2f", inst->rd, inst->imm);
-                break;
-            case OP_LOAD:
-            case OP_STORE:
-                if (inst->addr_mode == ADDR_DIRECT) {
-                    printf("R%d, [%d]", inst->rd, inst->addr);
-                } else {
-                    printf("R%d, [R%d]", inst->rd, inst->addr_reg);
-                }
-                break;
-            case OP_FADD:
-            case OP_FMUL:
-                printf("R%d, R%d, R%d", inst->rd, inst->ra, inst->rb);
-                break;
-            case OP_INC:
-            case OP_DEC:
-                printf("R%d", inst->rd);
-                break;
-            case OP_JNZ:
-                printf("%d", inst->label);
-                break;
-            case OP_HALT:
-                break;
-        }
-        printf("\n");
-    }
-    if (prog->size > 10) {
-    LOGD("PE%d: ... (%d instrucciones más)", pe->id, prog->size - 10);
-    }
-    
-    // NOTA: La memoria ya fue inicializada por dotprod_init_data() en main.c
-    // No se necesita inicialización adicional aquí.
-    
-    LOGI("PE%d: iniciando ejecución", pe->id);
+    LOGI("PE%d: starting execution", pe->id);
     
     // Ejecutar programa
     pe->rf.pc = 0;
@@ -97,7 +48,7 @@ void* pe_run(void* arg) {
     
     while (running && iterations < max_iterations) {
         if (pe->rf.pc >= (uint64_t)prog->size) {
-         LOGE("PE%d: PC fuera de rango (%lu >= %d)", pe->id, pe->rf.pc, prog->size);
+         LOGE("PE%d: PC out of range (%lu >= %d)", pe->id, pe->rf.pc, prog->size);
             break;
         }
         
@@ -109,11 +60,11 @@ void* pe_run(void* arg) {
     }
     
     if (iterations >= max_iterations) {
-    LOGW("PE%d: máximo de iteraciones alcanzado (%d)", pe->id, max_iterations);
+    LOGW("PE%d: maximum number of iterations reached (%d)", pe->id, max_iterations);
     }
     
-    LOGI("PE%d: ejecución terminada", pe->id);
-    LOGI("PE%d: iteraciones ejecutadas=%d", pe->id, iterations);
+    LOGI("PE%d: execution finished", pe->id);
+    LOGI("PE%d: iterations executed=%d", pe->id, iterations);
     
     // Imprimir estado final de registros
     reg_print(&pe->rf, pe->id);
@@ -121,6 +72,6 @@ void* pe_run(void* arg) {
     // Liberar memoria del programa
     free_program(prog);
     
-    LOGD("PE%d: terminado", pe->id);
+    LOGD("PE%d: done", pe->id);
     return NULL;
 }

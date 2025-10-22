@@ -26,6 +26,16 @@ log_level_t log_get_level(void);
 // Implementación base
 void log_log(log_level_t level, const char* module, const char* fmt, ...);
 
+// Helpers de color para consumo externo (p.ej., estadísticas).
+// Devuelven códigos ANSI o cadena vacía si el color está deshabilitado para stdout.
+const char* log_color_reset(void);
+const char* log_color_bold(void);
+const char* log_color_blue(void);
+const char* log_color_cyan(void);
+const char* log_color_green(void);
+const char* log_color_yellow(void);
+int log_colors_enabled_stdout(void);
+
 // Módulo por archivo (definir antes de incluir si se desea custom)
 #ifndef LOG_MODULE
 #define LOG_MODULE "APP"

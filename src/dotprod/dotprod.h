@@ -4,31 +4,30 @@
 #include "memory.h"
 
 /**
- * @brief Inicializa los vectores A y B en memoria para el producto punto
+ * @brief Initialize vectors A and B in memory for the dot product
  * 
- * Vector A: direcciones 0-15
- * Vector B: direcciones 100-115
- * Resultados parciales: direcciones 200-203
- * Resultado final: dirección 204
+ * Vector A: addresses 0-15
+ * Vector B: addresses 100-115
+ * Partial results: addresses 200-203
+ * Final result: address 204
  * 
- * @param mem Puntero a la estructura Memory
+ * @param mem Pointer to Memory structure
  */
 void dotprod_init_data(Memory* mem);
 
 /**
- * @brief Verifica el resultado del producto punto
+ * @brief Get the calculated dot product result
  * 
- * @param mem Puntero a la estructura Memory
- * @return El valor del producto punto calculado en addr 204
+ * @param mem Pointer to Memory structure
+ * @return The dot product value stored at addr 204
  */
 double dotprod_get_result(Memory* mem);
 
 /**
- * @brief Imprime los vectores y resultados del producto punto
- * Incluye flush automático de cachés para asegurar coherencia
+ * @brief Print vectors and dot product results
+ * Includes automatic cache writeback to ensure coherence
  * 
- * @param mem Puntero a la estructura Memory
- * @param caches Array de cachés de los PEs
+ * @param mem Pointer to Memory structure
  */
 void dotprod_print_results(Memory* mem);
 
