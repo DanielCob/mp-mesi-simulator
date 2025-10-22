@@ -24,7 +24,7 @@
 #define VECTOR_A_FILE          "data/vector_decimals_a.csv"
 #define VECTOR_B_FILE          "data/vector_decimals_b.csv"
 
-#define MISALIGNMENT_OFFSET    0    // Desalineamiento global (0 = alineado)
+#define MISALIGNMENT_OFFSET    3    // Desalineamiento global (0 = alineado)
 
 // SEGMENTACIÓN DE MEMORIA
 // Configuración de memoria compartida

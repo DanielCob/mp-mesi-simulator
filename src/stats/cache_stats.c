@@ -96,7 +96,7 @@ void stats_print(const CacheStats* stats, int pe_id) {
            B, RESET, stats->bus_reads, stats->bus_read_x, stats->bus_upgrades, stats->bus_writebacks);
     
     double total_mb = (stats->bytes_read_from_bus + stats->bytes_written_to_bus) / (1024.0 * 1024.0);
-    printf("%sTraffic%s: read=%lu (%.2f KB) written=%lu (%.2f KB) total=%.6f MB\n", 
+       printf("%sTraffic (data only)%s: read=%lu (%.2f KB) written=%lu (%.2f KB) total=%.6f MB\n", 
            B, RESET,
            stats->bytes_read_from_bus, stats->bytes_read_from_bus / 1024.0,
            stats->bytes_written_to_bus, stats->bytes_written_to_bus / 1024.0, total_mb);
@@ -169,7 +169,7 @@ void stats_print_summary(const CacheStats* stats_array, int num_pes) {
            total_inv_received, total_inv_sent, total_inv_received + total_inv_sent);
     
     // Tráfico del bus
-       printf("%sBus traffic per PE%s (KB):\n", B, RESET);
+              printf("%sBus traffic per PE (data only)%s (KB):\n", B, RESET);
     
     double total_traffic_kb = 0.0;
     
@@ -188,6 +188,6 @@ void stats_print_summary(const CacheStats* stats_array, int num_pes) {
         total_traffic_kb += traffic_kb;
     }
     
-    printf("Total bus traffic: %.2f KB (%.6f MB)\n",
+       printf("Total bus traffic (data only): %.2f KB (%.6f MB)\n",
            total_traffic_kb, total_traffic_kb / 1024.0);
 }

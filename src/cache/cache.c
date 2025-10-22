@@ -399,6 +399,9 @@ void cache_flush(Cache* cache, int pe_id) {
     
     // Write back all modified blocks
     for (int i = 0; i < count; i++) {
+        // Record per-PE writeback stats and data bytes
+        cache->stats.bus_writebacks++;
+        stats_record_bus_traffic(&cache->stats, 0, BLOCK_SIZE * sizeof(double));
         bus_broadcast(cache->bus, BUS_WB, modified_blocks[i], pe_id);
     }
     
