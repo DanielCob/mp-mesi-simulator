@@ -4,10 +4,13 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pthread -g
 TARGET = mp_mesi
+PYTHON = python3
 
 # Directorios de código
 SRC_DIR = src
 OBJ_DIR = obj
+ASM_DIR = asm
+SCRIPTS_DIR = scripts
 
 # Incluir subcarpetas
 INCLUDES = -I$(SRC_DIR) \
@@ -23,6 +26,16 @@ INCLUDES = -I$(SRC_DIR) \
 SRC = $(shell find $(SRC_DIR) -name "*.c")
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 
+# Script de generación y archivo de configuración
+GEN_SCRIPT = $(SCRIPTS_DIR)/generate_asm.py
+CONFIG_H = $(SRC_DIR)/include/config.h
+
+# Archivos assembly generados
+ASM_FILES = $(ASM_DIR)/dotprod_pe0.asm \
+            $(ASM_DIR)/dotprod_pe1.asm \
+            $(ASM_DIR)/dotprod_pe2.asm \
+            $(ASM_DIR)/dotprod_pe3.asm
+
 # ============================
 # COLORES
 # ============================
@@ -36,8 +49,14 @@ RESET  = \033[0m
 # ============================
 all: $(TARGET)
 
+# Generar archivos assembly si no existen o si config.h cambió
+$(ASM_FILES): $(CONFIG_H) $(GEN_SCRIPT)
+	@echo "$(YELLOW) Generando archivos assembly...$(RESET)"
+	@$(PYTHON) $(GEN_SCRIPT)
+	@echo "$(GREEN) Archivos assembly generados$(RESET)"
+
 # Crear ejecutable
-$(TARGET): $(OBJ)
+$(TARGET): $(ASM_FILES) $(OBJ)
 	@echo "$(YELLOW) Enlazando...$(RESET)"
 	@$(CC) $(CFLAGS) $(OBJ) -o $(TARGET)
 	@echo "$(GREEN) Compilación completa: $(TARGET)$(RESET)"
@@ -66,7 +85,11 @@ clean:
 	@echo "$(RED) Limpiando archivos compilados...$(RESET)"
 	@rm -rf $(OBJ_DIR) $(TARGET)
 
+cleanall: clean
+	@echo "$(RED) Limpiando archivos assembly generados...$(RESET)"
+	@rm -f $(ASM_FILES)
+
 # ============================
 # EXTRA
 # ============================
-.PHONY: all clean run debug
+.PHONY: all clean cleanall run debug

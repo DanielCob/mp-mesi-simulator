@@ -4,7 +4,6 @@ Generador de programas assembly para producto punto paralelo
 Genera archivos .asm parametrizados basados en config.h
 """
 
-import sys
 import re
 
 def read_config_h():
@@ -107,50 +106,21 @@ def generate_worker_pe(pe_id):
     cfg_start_idx_addr = CFG_PE_START_ADDR + pe_id * 2
     cfg_segment_size_addr = CFG_PE_START_ADDR + pe_id * 2 + 1
     
-    code = f"""# ============================================================================
-# Producto Punto Paralelo - PE{pe_id} (CÓDIGO GENÉRICO REUTILIZABLE)
-# ============================================================================
-# Este código carga todas las constantes desde SHARED_CONFIG (addr 0-15)
-# NO requiere regeneración al cambiar VECTOR_SIZE, NUM_PES, etc.
-# Solo recompilar para actualizar el área de configuración compartida
-#
-# SHARED_CONFIG Layout:
-#   [0] = VECTOR_A_ADDR
-#   [1] = VECTOR_B_ADDR
-#   [2] = RESULTS_ADDR
-#   [3] = FLAGS_ADDR
-#   [8+{pe_id}*2] = PE{pe_id}_START_INDEX
-#   [9+{pe_id}*2] = PE{pe_id}_SEGMENT_SIZE
-# ============================================================================
-
-# ============================================================================
-# CARGA DE CONSTANTES DESDE SHARED_CONFIG
-# ============================================================================
-
-# Cargar VECTOR_A_ADDR (addr 0)
+    code = f"""# Cargar VECTOR_A_ADDR (addr 0)
 MOV R4, {float(CFG_VECTOR_A_ADDR)}
 LOAD R5, [R4]        # R5 = VECTOR_A_ADDR (para cálculo de direcciones)
 
-# Cargar VECTOR_B_ADDR (addr 1)
 MOV R4, {float(CFG_VECTOR_B_ADDR)}
 LOAD R2, [R4]        # R2 = VECTOR_B_ADDR
 
-# Cargar start_index para PE{pe_id} (addr {cfg_start_idx_addr})
 MOV R4, {float(cfg_start_idx_addr)}
 LOAD R1, [R4]        # R1 = start_index (índice, no dirección)
 
-# Cargar segment_size para PE{pe_id} (addr {cfg_segment_size_addr})
 MOV R4, {float(cfg_segment_size_addr)}
 LOAD R3, [R4]        # R3 = segment_size (contador del loop)
 
-# ============================================================================
-# INICIALIZACIÓN
-# ============================================================================
 MOV R0, 0.0         # R0 = acumulador (resultado parcial)
 
-# ============================================================================
-# LOOP: Procesar segment_size elementos
-# ============================================================================
 LOOP_START:
 FADD R4, R5, R1     # R4 = VECTOR_A_ADDR + i (dirección de A[i])
 LOAD R4, [R4]       # R4 = A[i]
@@ -162,14 +132,9 @@ INC R1              # i++
 DEC R3              # contador--
 JNZ LOOP_START      # Repetir si contador != 0
 
-# ============================================================================
-# GUARDAR RESULTADO Y SEÑALIZAR
-# ============================================================================
-# Resultado parcial: RESULTS_ADDR + pe_id (direccionamiento directo)
 MOV R5, {float(RESULTS_ADDR + pe_id)}
 STORE R0, [R5]      # Guardar resultado parcial
 
-# Flag de sincronización: FLAGS_ADDR + pe_id
 MOV R7, {float(FLAGS_ADDR + pe_id)}
 MOV R6, 1.0         # Flag value
 STORE R6, [R7]      # Señalizar finalización
@@ -179,49 +144,26 @@ HALT
     return code
 
 def generate_master_pe(pe_id=3):
-    """Genera código assembly GENÉRICO para PE master (PE3)
-    CARGA CONSTANTES DESDE SHARED_CONFIG
-    USA MOV IMMEDIATE para BARRIER_CHECK y NUM_PES (optimización anti-thrashing)"""
     
     cfg_start_idx_addr = CFG_PE_START_ADDR + pe_id * 2
     cfg_segment_size_addr = CFG_PE_START_ADDR + pe_id * 2 + 1
-    
-    # Valores para MOV immediate (optimizados para evitar cache thrashing)
-    barrier_check_value = -(NUM_PES - 1)  # e.g., -3.0 para NUM_PES=4
-    num_pes_value = float(NUM_PES)
-    
-    code = f"""# ============================================================================
-# Producto Punto Paralelo - PE{pe_id} (MASTER - CÓDIGO GENÉRICO REUTILIZABLE)
-# ============================================================================
-# Este código carga constantes desde SHARED_CONFIG (addr 0-15)
-# OPTIMIZACIÓN: Usa MOV immediate para BARRIER_CHECK y NUM_PES
-#   (evita cache thrashing durante barrier/reducción)
-# ============================================================================
 
-# ============================================================================
-# FASE 1: Calcular producto parcial propio
-# ============================================================================
+    code = f"""# cálculo de producto punto parcial
 
-# Cargar VECTOR_A_ADDR (addr 0)
 MOV R4, {float(CFG_VECTOR_A_ADDR)}
-LOAD R5, [R4]        # R5 = VECTOR_A_ADDR (para cálculo de direcciones)
+LOAD R5, [R4]        # R5 = VECTOR_A_ADDR
 
-# Cargar VECTOR_B_ADDR (addr 1)
 MOV R4, {float(CFG_VECTOR_B_ADDR)}
 LOAD R2, [R4]        # R2 = VECTOR_B_ADDR
 
-# Cargar start_index para PE{pe_id} (addr {cfg_start_idx_addr})
 MOV R4, {float(cfg_start_idx_addr)}
-LOAD R1, [R4]        # R1 = start_index (índice, no dirección)
+LOAD R1, [R4]        # R1 = start_index
 
-# Cargar segment_size para PE{pe_id} (addr {cfg_segment_size_addr})
 MOV R4, {float(cfg_segment_size_addr)}
 LOAD R3, [R4]        # R3 = segment_size (contador)
 
-# Inicialización
 MOV R0, 0.0         # R0 = acumulador
 
-# LOOP: Procesar segmento propio
 LOOP_START:
 FADD R4, R5, R1     # R4 = VECTOR_A_ADDR + i (dirección de A[i])
 LOAD R4, [R4]       # R4 = A[i]
@@ -231,18 +173,17 @@ FMUL R4, R4, R6     # R4 = A[i] * B[i]
 FADD R0, R0, R4     # acumulador += producto
 INC R1              # i++
 DEC R3              # contador--
-JNZ LOOP_START      # Repetir si contador != 0
+JNZ LOOP_START      # repetir si contador != 0
 
-# Guardar resultado parcial (direccionamiento directo)
 MOV R5, {float(RESULTS_ADDR + pe_id)}
-STORE R0, [R5]      # Guardar en RESULTS_ADDR + {pe_id}
+STORE R0, [R5]      # guardar en RESULTS_ADDR + {pe_id}
 
-# ============================================================================
-# FASE 2: BARRIER - Esperar a que otros PEs terminen
-# ============================================================================
+# barrera de sincronización
+
+MOV R1, {float(CFG_BARRIER_CHECK_ADDR)}
+LOAD R7, [R1]  # R7 = barrier_check = - (NUM_PES-1)
 
 WAIT_LOOP:
-# Cargar flags directamente (1 solo bloque de caché)
 MOV R1, {float(FLAGS_ADDR)}
 LOAD R2, [R1]        # R2 = flag[PE0]
 
@@ -252,21 +193,16 @@ LOAD R4, [R1]        # R4 = flag[PE1]
 MOV R1, {float(FLAGS_ADDR + 2)}
 LOAD R5, [R1]        # R5 = flag[PE2]
 
-# Sumar flags
 FADD R6, R2, R4      # R6 = flag0 + flag1
 FADD R6, R6, R5      # R6 += flag2
-
-# OPTIMIZACIÓN: MOV immediate para BARRIER_CHECK (evita cache miss)
-MOV R7, {barrier_check_value}  # R7 = -(NUM_PES-1) = {barrier_check_value}
 FADD R6, R6, R7      # R6 = suma_flags - (NUM_PES-1)
-JNZ WAIT_LOOP        # Si != 0, repetir
 
-# ============================================================================
-# FASE 3: REDUCCIÓN - Sumar resultados parciales
-# ============================================================================
+JNZ WAIT_LOOP        # si != 0, repetir
 
-# OPTIMIZACIÓN: MOV immediate para NUM_PES (evita cache miss)
-MOV R2, {num_pes_value}  # R2 = NUM_PES = {num_pes_value} (contador)
+# reducción de resultados parciales
+
+MOV R1, {float(CFG_NUM_PES_ADDR)}
+LOAD R2, [R1]  # R2 = NUM_PES
 
 MOV R1, {float(RESULTS_ADDR)}  # R1 = dirección actual (empieza en RESULTS_ADDR)
 MOV R0, 0.0          # R0 = acumulador final
@@ -276,13 +212,10 @@ LOAD R4, [R1]        # R4 = resultado_parcial[i]
 FADD R0, R0, R4      # acumulador += resultado_parcial[i]
 INC R1               # R1++ (siguiente resultado: compacto, +1 dirección)
 DEC R2               # contador--
-JNZ REDUCE_LOOP      # Repetir si contador != 0
+JNZ REDUCE_LOOP      # repetir si contador != 0
 
-# ============================================================================
-# Guardar resultado final
-# ============================================================================
 MOV R2, {float(FINAL_RESULT_ADDR)}
-STORE R0, [R2]       # Guardar producto punto final
+STORE R0, [R2]       # guardar producto punto final
 
 HALT
 """
@@ -314,7 +247,7 @@ def main():
         f.write(code)
     print(f"✓ Generado: {filename}")
     
-    print(f"\n✅ {NUM_PES} archivos generados correctamente")
+    print(f"\n {NUM_PES} archivos generados correctamente")
 
 if __name__ == "__main__":
     main()
