@@ -127,22 +127,25 @@ void* bus_thread_func(void* arg) {
         switch (req->msg) {
             case BUS_RD:
                 bus_stats_record_bus_rd(&bus->stats, req->src_pe);
-                // BUS_RD transfiere un bloque completo de datos
+                // BUS_RD transfiere un bloque completo de datos + señal de control
+                bus_stats_record_control_base(&bus->stats, BUS_CONTROL_SIGNAL_SIZE);
                 bus_stats_record_data_transfer(&bus->stats, BLOCK_SIZE * sizeof(double));
                 break;
             case BUS_RDX:
                 bus_stats_record_bus_rdx(&bus->stats, req->src_pe);
-                // BUS_RDX transfiere un bloque completo de datos
+                // BUS_RDX transfiere un bloque completo de datos + señal de control
+                bus_stats_record_control_base(&bus->stats, BUS_CONTROL_SIGNAL_SIZE);
                 bus_stats_record_data_transfer(&bus->stats, BLOCK_SIZE * sizeof(double));
                 break;
             case BUS_UPGR:
                 bus_stats_record_bus_upgr(&bus->stats, req->src_pe);
                 // BUS_UPGR solo transfiere señal de control (dirección + comando)
-                bus_stats_record_control_transfer(&bus->stats, BUS_CONTROL_SIGNAL_SIZE);
+                bus_stats_record_control_base(&bus->stats, BUS_CONTROL_SIGNAL_SIZE);
                 break;
             case BUS_WB:
                 bus_stats_record_bus_wb(&bus->stats, req->src_pe);
-                // BUS_WB transfiere un bloque completo de datos
+                // BUS_WB transfiere un bloque completo de datos + señal de control
+                bus_stats_record_control_base(&bus->stats, BUS_CONTROL_SIGNAL_SIZE);
                 bus_stats_record_data_transfer(&bus->stats, BLOCK_SIZE * sizeof(double));
                 break;
         }

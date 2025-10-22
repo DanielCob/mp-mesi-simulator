@@ -53,6 +53,16 @@ void bus_stats_record_control_transfer(BusStats* stats, int bytes) {
     stats->bytes_transferred += bytes;
 }
 
+void bus_stats_record_control_base(BusStats* stats, int bytes) {
+    stats->bytes_control_base += bytes;
+    bus_stats_record_control_transfer(stats, bytes);
+}
+
+void bus_stats_record_control_invalidations(BusStats* stats, int bytes) {
+    stats->bytes_control_invs += bytes;
+    bus_stats_record_control_transfer(stats, bytes);
+}
+
 void bus_stats_print(const BusStats* stats) {
     const char* B = log_color_bold();
     const char* BLUE = log_color_blue();
@@ -69,12 +79,21 @@ void bus_stats_print(const BusStats* stats) {
     double traffic_mb = traffic_kb / 1024.0;
     double data_kb = stats->bytes_data / 1024.0;
     double control_kb = stats->bytes_control / 1024.0;
+    double control_base_kb = stats->bytes_control_base / 1024.0;
+    double control_invs_kb = stats->bytes_control_invs / 1024.0;
 
     printf("%sTraffic%s: data=%lu (%.2f KB) control=%lu (%.2f KB) total=%lu (%.2f KB, %.6f MB)\n",
            B, RESET,
            stats->bytes_data, data_kb,
            stats->bytes_control, control_kb,
            stats->bytes_transferred, traffic_kb, traffic_mb);
+
+    // Desglose de control
+    if (stats->bytes_control > 0) {
+        printf("  Control breakdown: base=%lu (%.2f KB) invalidations=%lu (%.2f KB)\n",
+               stats->bytes_control_base, control_base_kb,
+               stats->bytes_control_invs, control_invs_kb);
+    }
 
     printf("%sUsage per PE%s (transactions and %%):\n", B, RESET);
     for (int i = 0; i < 4; i++) {

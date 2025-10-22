@@ -9,7 +9,8 @@
 #define MEM_SIZE 512
 
 // OVERHEAD DE PROTOCOLO DE COHERENCIA
-#define BUS_CONTROL_SIGNAL_SIZE 12  // bytes: msg (4) + addr (4) + src_pe (4)
+#define BUS_CONTROL_SIGNAL_SIZE 12   // bytes: msg (4) + addr (4) + src_pe (4)
+#define INVALIDATION_CONTROL_SIGNAL_SIZE 8 // bytes: msg (4) + addr (4)
 
 // CONFIGURACIÓN DE VECTORES (PRODUCTO PUNTO)
 #define VECTOR_SIZE 16

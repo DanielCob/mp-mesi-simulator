@@ -22,7 +22,9 @@ typedef struct {
     
     // Desglose de tráfico
     uint64_t bytes_data;           // Bytes de datos (bloques de caché)
-    uint64_t bytes_control;        // Bytes de señales de control (invalidaciones, etc.)
+    uint64_t bytes_control;        // Bytes de señales de control (total)
+    uint64_t bytes_control_base;   // Bytes de control base por transacción
+    uint64_t bytes_control_invs;   // Bytes de control adicionales por invalidaciones
     
     // Conteo por PE (quién usa más el bus)
     uint64_t transactions_per_pe[4];
@@ -67,6 +69,9 @@ void bus_stats_record_data_transfer(BusStats* stats, int bytes);
  * @brief Registra bytes de control transferidos (señales, invalidaciones)
  */
 void bus_stats_record_control_transfer(BusStats* stats, int bytes);
+// Desgloses específicos de control
+void bus_stats_record_control_base(BusStats* stats, int bytes);
+void bus_stats_record_control_invalidations(BusStats* stats, int bytes);
 
 /**
  * @brief Imprime las estadísticas del bus
