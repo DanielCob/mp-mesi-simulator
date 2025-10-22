@@ -8,18 +8,18 @@
 #define BLOCK_SIZE 4  // 4 doubles (32 bytes)
 #define MEM_SIZE 512
 
+// Rutas de archivos ASM
+#define ASM_DOTPROD_PE0_PATH   "asm/dotprod_pe0.asm"
+#define ASM_DOTPROD_PE1_PATH   "asm/dotprod_pe1.asm"
+#define ASM_DOTPROD_PE2_PATH   "asm/dotprod_pe2.asm"
+#define ASM_DOTPROD_PE3_PATH   "asm/dotprod_pe3.asm"
+
 // CONFIGURACIÓN DE VECTORES (PRODUCTO PUNTO)
 #define VECTOR_SIZE 16
 
 // Rutas de archivos CSV
 #define VECTOR_A_FILE          "data/vector_decimals_a_16.csv"
 #define VECTOR_B_FILE          "data/vector_decimals_b_16.csv"
-
-// Rutas de archivos ASM
-#define ASM_DOTPROD_PE0_PATH   "asm/dotprod_pe0.asm"
-#define ASM_DOTPROD_PE1_PATH   "asm/dotprod_pe1.asm"
-#define ASM_DOTPROD_PE2_PATH   "asm/dotprod_pe2.asm"
-#define ASM_DOTPROD_PE3_PATH   "asm/dotprod_pe3.asm"
 
 #define MISALIGNMENT_OFFSET    0    // Desalineamiento global (0 = alineado)
 
