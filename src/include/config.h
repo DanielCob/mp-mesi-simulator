@@ -12,8 +12,8 @@
 #define VECTOR_SIZE 16
 
 // Rutas de archivos CSV
-#define VECTOR_A_FILE          "data/vector_decimals_a.csv"
-#define VECTOR_B_FILE          "data/vector_decimals_b.csv"
+#define VECTOR_A_FILE          "data/vector_decimals_a_16.csv"
+#define VECTOR_B_FILE          "data/vector_decimals_b_16.csv"
 
 // Rutas de archivos ASM
 #define ASM_DOTPROD_PE0_PATH   "asm/dotprod_pe0.asm"
