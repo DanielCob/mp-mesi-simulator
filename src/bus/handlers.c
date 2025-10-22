@@ -26,7 +26,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
             if (state == M) {
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK y pasando a S\n", i);
+                printf("  [Cache PE%d] Bloque en M: writeback y pasar a S\n", i);
                 mem_write_block(bus->memory, addr, block, src_pe);
                 cache_set_block(requestor, addr, block);
                 cache_set_state(cache, addr, S);  // M->S (registra transición)
@@ -36,7 +36,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
             } else if (state == E) {
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en E, pasando a S\n", i);
+                printf("  [Cache PE%d] Bloque en E: pasar a S\n", i);
                 cache_set_block(requestor, addr, block);
                 cache_set_state(cache, addr, S);  // E->S (registra transición)
                 cache_set_state(requestor, addr, S);  // I->S (registra transición)
@@ -45,7 +45,7 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
             } else if (state == S && !data_found) {
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en S, compartiendo\n", i);
+                printf("  [Cache PE%d] Bloque en S: compartiendo\n", i);
                 cache_set_block(requestor, addr, block);
                 cache_set_state(requestor, addr, S);  // I->S (registra transición)
                 data_found = 1;
@@ -56,10 +56,10 @@ void handle_busrd(Bus* bus, int addr, int src_pe) {
 
     // Ningún cache tiene el dato, leer de memoria
     if (!data_found) {
-        printf("[Bus] Read miss, leyendo BLOQUE desde memoria addr=%d\n", addr);
+    printf("[Bus] Fallo de lectura: leyendo bloque desde memoria addr=%d\n", addr);
         double block[BLOCK_SIZE];
         mem_read_block(bus->memory, addr, block, src_pe);
-        printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
+    printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
                block[0], block[1], block[2], block[3]);
         cache_set_block(requestor, addr, block);
         cache_set_state(requestor, addr, E);  // I->E (registra transición)
@@ -81,7 +81,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
             if (state == M) {
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK e INVALIDANDO\n", i);
+                printf("  [Cache PE%d] Bloque en M: writeback e invalidar\n", i);
                 mem_write_block(bus->memory, addr, block, src_pe);
                 cache_set_block(requestor, addr, block);
                 cache_set_state(cache, addr, I);  // M->I (registra transición)
@@ -93,7 +93,7 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
                 if (!data_found) {
                     double block[BLOCK_SIZE];
                     cache_get_block(cache, addr, block);
-                    printf("  [Cache PE%d] Tiene bloque en %c, proveyendo e INVALIDANDO\n", i, state == E ? 'E' : 'S');
+                    printf("  [Cache PE%d] Bloque en %c: proveer e invalidar\n", i, state == E ? 'E' : 'S');
                     cache_set_block(requestor, addr, block);
                     cache_set_state(requestor, addr, M);  // I->M (registra transición)
                     data_found = 1;
@@ -110,10 +110,10 @@ void handle_busrdx(Bus* bus, int addr, int src_pe) {
     
     // Ningún cache tiene el dato, leer de memoria
     if (!data_found) {
-        printf("[Bus] Write miss, leyendo BLOQUE desde memoria addr=%d\n", addr);
+    printf("[Bus] Fallo de escritura: leyendo bloque desde memoria addr=%d\n", addr);
         double block[BLOCK_SIZE];
         mem_read_block(bus->memory, addr, block, src_pe);
-        printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
+    printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
                block[0], block[1], block[2], block[3]);
         cache_set_block(requestor, addr, block);
         cache_set_state(requestor, addr, M);  // I->M (registra transición)
@@ -132,7 +132,7 @@ void handle_busupgr(Bus* bus, int addr, int src_pe) {
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == S) {
-                printf("  [Cache PE%d] Invalidando línea en S\n", i);
+                printf("  [Cache PE%d] Invalidar línea en S\n", i);
                 cache_set_state(cache, addr, I);  // S->I (registra transición)
                 invalidations_count++;
             }
@@ -154,7 +154,7 @@ void handle_buswb(Bus* bus, int addr, int src_pe) {
     if (cache_get_state(writer, addr) == M) {
         double block[BLOCK_SIZE];
         cache_get_block(writer, addr, block);
-        printf("[Bus] Writeback BLOQUE a memoria addr=%d [%.2f, %.2f, %.2f, %.2f]\n", 
+    printf("[Bus] Escritura de bloque a memoria addr=%d [%.2f, %.2f, %.2f, %.2f]\n", 
                addr, block[0], block[1], block[2], block[3]);
         mem_write_block(bus->memory, addr, block, src_pe);
     }

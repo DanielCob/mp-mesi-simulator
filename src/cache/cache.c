@@ -1,6 +1,8 @@
+#define LOG_MODULE "CACHE"
 #include "cache.h"
 #include "bus.h"
 #include <stdio.h>
+#include "log.h"
 
 // ESTRUCTURAS PRIVADAS
 
@@ -22,8 +24,8 @@ static void write_callback(void* context) {
     // Cambiar estado a Modified (I->M ya se registró en handler)
     ctx->victim->state = M;
     
-    printf("[CALLBACK PE%d] WRITE completado -> way %d, offset %d, valor=%.2f (estado M)\n", 
-           ctx->pe_id, ctx->victim_way, ctx->offset, ctx->value);
+    LOGD("PE%d write callback: way=%d offset=%d valor=%.2f estado=M", 
+        ctx->pe_id, ctx->victim_way, ctx->offset, ctx->value);
 }
 
 // INICIALIZACIÓN Y LIMPIEZA
@@ -66,8 +68,7 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     
     // Log solo si hay offset (dirección no alineada)
     if (offset != 0) {
-        printf("[PE%d] READ addr=%d → block_base=%d, offset=%d\n", 
-               pe_id, addr, block_base, offset);
+        LOGD("PE%d read: addr=%d base=%d offset=%d", pe_id, addr, block_base, offset);
     }
     
     pthread_mutex_lock(&cache->mutex);
@@ -87,15 +88,14 @@ double cache_read(Cache* cache, int addr, int pe_id) {
                 double result = set->lines[i].data[offset];
                 cache_update_lru(cache, set_index, i);
                 stats_record_read_hit(&cache->stats);
-                printf("[PE%d] READ HIT en set %d (way %d, estado %c, offset %d) -> valor=%.2f\n", 
-                       pe_id, set_index, i, "MESI"[state], offset, result);
+             LOGD("PE%d read hit: set=%d way=%d estado=%c offset=%d valor=%.2f", 
+                 pe_id, set_index, i, "MESI"[state], offset, result);
                 pthread_mutex_unlock(&cache->mutex);
                 return result;
             }
             
             // Tag match pero estado I (línea invalidada)
-            printf("[PE%d] READ tag match pero estado I en set %d (way %d)\n", 
-                   pe_id, set_index, i);
+         LOGD("PE%d read tag-match pero estado=I: set=%d way=%d", pe_id, set_index, i);
             break;
         }
     }
@@ -103,7 +103,7 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     // MISS: traer línea del bus
     stats_record_read_miss(&cache->stats);
     stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);
-    printf("[PE%d] READ MISS en set %d, enviando BUS_RD\n", pe_id, set_index);
+    LOGD("PE%d read miss: set=%d -> BUS_RD", pe_id, set_index);
 
     // Seleccionar víctima (puede hacer writeback si está en M)
     CacheLine* victim = cache_select_victim(cache, set_index, pe_id);
@@ -122,8 +122,8 @@ double cache_read(Cache* cache, int addr, int pe_id) {
     // Leer el valor del bloque traído
     double result = victim->data[offset];
     cache_update_lru(cache, set_index, victim_way);
-    printf("[PE%d] READ completado -> bloque traído en way %d, offset %d, valor=%.2f (estado %c)\n", 
-           pe_id, victim_way, offset, result, "MESI"[victim->state]);
+    LOGD("PE%d read completado: way=%d offset=%d valor=%.2f estado=%c", 
+        pe_id, victim_way, offset, result, "MESI"[victim->state]);
     pthread_mutex_unlock(&cache->mutex);
     return result;
 }
@@ -135,8 +135,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     
     // Log solo si hay offset (dirección no alineada)
     if (offset != 0) {
-        printf("[PE%d] WRITE addr=%d → block_base=%d, offset=%d\n", 
-               pe_id, addr, block_base, offset);
+        LOGD("PE%d write: addr=%d base=%d offset=%d", pe_id, addr, block_base, offset);
     }
     
     pthread_mutex_lock(&cache->mutex);
@@ -157,8 +156,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 set->lines[i].data[offset] = value;
                 cache_update_lru(cache, set_index, i);
                 stats_record_write_hit(&cache->stats);
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado M, offset %d) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, offset, value);
+             LOGD("PE%d write hit: set=%d way=%d estado=M offset=%d valor=%.2f", 
+                 pe_id, set_index, i, offset, value);
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
@@ -172,8 +171,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 stats_record_mesi_transition(&cache->stats, old_state, M);
                 cache_update_lru(cache, set_index, i);
                 stats_record_write_hit(&cache->stats);
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado E->M, offset %d) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, offset, value);
+             LOGD("PE%d write hit: set=%d way=%d E->M offset=%d valor=%.2f", 
+                 pe_id, set_index, i, offset, value);
                 pthread_mutex_unlock(&cache->mutex);
                 return;
             } 
@@ -184,8 +183,8 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
                 stats_record_write_hit(&cache->stats);
                 cache->stats.bus_upgrades++;
                 stats_record_invalidation_sent(&cache->stats);  // Enviamos invalidaciones
-                printf("[PE%d] WRITE HIT en set %d (way %d, estado S->M, offset %d, enviando BUS_UPGR) -> escribiendo %.2f\n", 
-                       pe_id, set_index, i, offset, value);
+             LOGD("PE%d write hit: set=%d way=%d S->M offset=%d BUS_UPGR valor=%.2f", 
+                 pe_id, set_index, i, offset, value);
                 
                 pthread_mutex_unlock(&cache->mutex);
                 bus_broadcast(cache->bus, BUS_UPGR, block_base, pe_id);
@@ -207,8 +206,7 @@ void cache_write(Cache* cache, int addr, double value, int pe_id) {
     stats_record_write_miss(&cache->stats);
     stats_record_bus_traffic(&cache->stats, BLOCK_SIZE * sizeof(double), 0);
     stats_record_invalidation_sent(&cache->stats);  // BUS_RDX puede causar invalidaciones
-    printf("[PE%d] WRITE MISS en set %d, enviando BUS_RDX -> valor a escribir=%.2f\n", 
-           pe_id, set_index, value);
+    LOGD("PE%d write miss: set=%d -> BUS_RDX valor=%.2f", pe_id, set_index, value);
 
     // Seleccionar víctima (puede hacer writeback si está en M)
     CacheLine* victim = cache_select_victim(cache, set_index, pe_id);
@@ -250,53 +248,44 @@ CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id) {
     CacheLine* victim = NULL;
 
     // ===== PRIORIDAD 1: Reutilizar línea inválida con tag correcto =====
-    // Si hay una línea en estado I, significa que fue invalidada
-    // Podemos reutilizarla sin hacer writeback ni desalojar otra línea
     for (int i = 0; i < WAYS; i++) {
         if (set->lines[i].valid && set->lines[i].state == I) {
             victim = &set->lines[i];
-            printf("[PE%d] Víctima: way %d (línea en estado I, reutilizando)\n", pe_id, i);
+            LOGD("PE%d víctima: way=%d estado=I reutilizar", pe_id, i);
             return victim;
         }
     }
     
     // ===== PRIORIDAD 2: Buscar línea inválida =====
-    // Línea que nunca ha sido usada (valid = 0)
-    // No requiere writeback
     for (int i = 0; i < WAYS; i++) {
         if (!set->lines[i].valid) {
             victim = &set->lines[i];
-            printf("[PE%d] Víctima: way %d (línea inválida)\n", pe_id, i);
+            LOGD("PE%d víctima: way=%d inválida", pe_id, i);
             return victim;
         }
     }
     
     // ===== PRIORIDAD 3: Política LRU =====
-    // Todas las líneas son válidas, usar LRU
-    // La línea con lru_bit = 0 es la menos recientemente usada
     for (int i = 0; i < WAYS; i++) {
         if (set->lines[i].lru_bit == 0) {
             victim = &set->lines[i];
-            printf("[PE%d] Víctima: way %d (política LRU)\n", pe_id, i);
+            LOGD("PE%d víctima: way=%d por LRU", pe_id, i);
             break;
         }
     }
     
     // ===== FALLBACK: Usar way 0 =====
-    // Esto nunca debería ocurrir en funcionamiento normal
     if (victim == NULL) {
         victim = &set->lines[0];
-        printf("[PE%d] Víctima: way 0 (fallback)\n", pe_id);
+    LOGD("PE%d víctima: way=0 (fallback)", pe_id);
     }
     
     // ===== WRITEBACK SI LA VÍCTIMA ESTÁ EN ESTADO M =====
-    // Antes de reemplazar una línea modificada, escribirla a memoria
     if (victim->state == M) {
         int victim_addr = (int)(victim->tag * SETS + set_index);
         cache->stats.bus_writebacks++;
         stats_record_bus_traffic(&cache->stats, 0, BLOCK_SIZE * sizeof(double));
-        printf("[PE%d] Evicting línea M (addr=%d), haciendo writeback\n", 
-               pe_id, victim_addr);
+    LOGD("PE%d evicción: línea M addr=%d -> BUS_WB", pe_id, victim_addr);
         bus_broadcast(cache->bus, BUS_WB, victim_addr, pe_id);
     }
     
@@ -387,7 +376,7 @@ void cache_set_block(Cache* cache, int addr, const double block[BLOCK_SIZE]) {
 
 // Hace writeback de todas las líneas modificadas
 void cache_flush(Cache* cache, int pe_id) {
-    printf("[PE%d] Flushing all modified cache lines...\n", pe_id);
+    LOGI("PE%d flush: iniciando writeback de líneas modificadas", pe_id);
     
     // Array para guardar direcciones de bloques modificados
     int modified_blocks[SETS * WAYS];
@@ -413,5 +402,5 @@ void cache_flush(Cache* cache, int pe_id) {
         bus_broadcast(cache->bus, BUS_WB, modified_blocks[i], pe_id);
     }
     
-    printf("[PE%d] Flush complete: %d line(s) written back\n", pe_id, count);
+    LOGI("PE%d flush: %d líneas enviadas a memoria", pe_id, count);
 }

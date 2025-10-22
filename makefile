@@ -23,6 +23,7 @@ INCLUDES = -I$(SRC_DIR) \
            -I$(SRC_DIR)/dotprod
 
 # Buscar todos los archivos .c en src/ y subcarpetas
+# Nota: incluye automáticamente src/log.c
 SRC = $(shell find $(SRC_DIR) -name "*.c")
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 

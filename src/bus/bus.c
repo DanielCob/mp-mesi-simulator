@@ -1,7 +1,9 @@
+#define LOG_MODULE "BUS"
 #include "bus.h"
 #include "handlers.h"
 #include <stdio.h>
 #include <pthread.h>
+#include "log.h"
 
 // INICIALIZACIÓN Y LIMPIEZA
 
@@ -27,7 +29,7 @@ void bus_init(Bus* bus, Cache* caches[], Memory* memory) {
 
     bus_register_handlers(bus);
 
-    printf("[BUS] Initialized with Round-Robin scheduling.\n");
+    LOGI("Inicializado (planificación round-robin)");
 }
 
 void bus_destroy(Bus* bus) {
@@ -80,7 +82,7 @@ void bus_broadcast_with_callback(Bus* bus, BusMsg msg, int addr, int src_pe,
 
 void* bus_thread_func(void* arg) {
     Bus* bus = (Bus*)arg;
-    printf("[BUS] Thread iniciado con Round-Robin scheduling.\n");
+    LOGD("Thread iniciado (round-robin)");
     
     while (bus->running) {
         pthread_mutex_lock(&bus->mutex);
@@ -119,8 +121,7 @@ void* bus_thread_func(void* arg) {
             }
         }
         
-        printf("[BUS] [RR] PE%d: Señal %d (addr=%d)\n", 
-               selected_pe, req->msg, req->addr);
+    LOGD("RR: PE%d señal=%d addr=%d", selected_pe, req->msg, req->addr);
         
         // Registrar estadísticas
         switch (req->msg) {
@@ -150,12 +151,12 @@ void* bus_thread_func(void* arg) {
         if (bus->handlers[req->msg]) {
             bus->handlers[req->msg](bus, req->addr, req->src_pe);
         } else {
-            printf("[BUS] No hay handler definido para la señal %d\n", req->msg);
+            LOGW("Sin handler para señal=%d", req->msg);
         }
         
         // Ejecutar callback si fue proporcionado (después del handler)
         if (req->callback) {
-            printf("[BUS] Ejecutando callback para PE%d\n", selected_pe);
+            LOGD("Ejecutando callback para PE%d", selected_pe);
             req->callback(req->callback_context);
         }
         
@@ -166,6 +167,6 @@ void* bus_thread_func(void* arg) {
         pthread_mutex_unlock(&bus->mutex);
     }
     
-    printf("[BUS] Thread terminado.\n");
+    LOGD("Thread terminado");
     return NULL;
 }

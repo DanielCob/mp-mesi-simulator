@@ -1,5 +1,7 @@
+#define LOG_MODULE "MEMORY"
 #include "memory.h"
 #include <stdio.h>
+#include "log.h"
 
 // INICIALIZACIÓN Y LIMPIEZA
 
@@ -19,7 +21,7 @@ void mem_init(Memory* mem) {
     mem->running = true;
     mem->current_request.processed = false;
     
-    printf("[MEMORY] Initialized.\n");
+    LOGI("Inicializada");
 }
 
 void mem_destroy(Memory* mem) {
@@ -34,7 +36,7 @@ void mem_destroy(Memory* mem) {
 
 void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) {
     if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[MEMORY ERROR] Read block address %d is not aligned\n", addr);
+        LOGW("lectura de bloque: dirección %d no alineada (ajustando)", addr);
         addr = ALIGN_DOWN(addr);
     }
     
@@ -69,7 +71,7 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) 
 
 void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int pe_id) {
     if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[MEMORY ERROR] Write block address %d is not aligned\n", addr);
+        LOGW("escritura de bloque: dirección %d no alineada (ajustando)", addr);
         addr = ALIGN_DOWN(addr);
     }
     
@@ -104,7 +106,7 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
 
 void* mem_thread_func(void* arg) {
     Memory* mem = (Memory*)arg;
-    printf("[MEMORY] Thread iniciado.\n");
+    LOGD("Thread iniciado");
     
     while (mem->running) {
         pthread_mutex_lock(&mem->mutex);
@@ -124,16 +126,16 @@ void* mem_thread_func(void* arg) {
         
         // Procesar solicitud (fuera del lock para permitir otras operaciones)
         if (req->op == MEM_OP_READ_BLOCK) {
-            printf("[MEMORY] READ_BLOCK addr=%d (reading %d doubles) from PE%d\n", 
-                   req->addr, BLOCK_SIZE, req->pe_id);
+          LOGD("READ_BLOCK addr=%d (%d doubles) desde PE%d", 
+              req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 req->block[i] = mem->data[req->addr + i];
             }
             memory_stats_record_read(&mem->stats, req->pe_id, BLOCK_SIZE * sizeof(double));
         } 
         else if (req->op == MEM_OP_WRITE_BLOCK) {
-            printf("[MEMORY] WRITE_BLOCK addr=%d (writing %d doubles) from PE%d\n", 
-                   req->addr, BLOCK_SIZE, req->pe_id);
+          LOGD("WRITE_BLOCK addr=%d (%d doubles) desde PE%d", 
+              req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 mem->data[req->addr + i] = req->block[i];
             }
@@ -150,6 +152,6 @@ void* mem_thread_func(void* arg) {
         pthread_mutex_unlock(&mem->mutex);
     }
     
-    printf("[MEMORY] Thread terminado.\n");
+    LOGD("Thread terminado");
     return NULL;
 }

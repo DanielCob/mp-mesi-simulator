@@ -7,11 +7,11 @@
 #include "pe.h"
 #include "bus.h"
 #include "memory.h"
+#include "log.h"
 
 int main() {
-    printf("================================================================================\n");
-    printf("           MESI MULTIPROCESSOR SIMULATOR - DOT PRODUCT PARALLEL                \n");
-    printf("================================================================================\n\n");
+    log_init();
+    LOGI("Iniciando simulador MESI - Producto punto paralelo");
     
     // Inicializar memoria y crear su thread
     Memory mem;
@@ -57,7 +57,7 @@ int main() {
     for (int i = 0; i < NUM_PES; i++)
         pthread_join(pe_threads[i], NULL);
 
-    printf("\n[Main] All PEs have finished execution\n");
+    LOGI("Todos los PEs finalizaron la ejecución");
 
     // ===== MOSTRAR RESULTADOS DEL PRODUCTO PUNTO =====
     // Los PEs ya hicieron writeback en HALT a través del bus
@@ -73,10 +73,7 @@ int main() {
     pthread_join(mem_thread, NULL);
 
     // Imprimir estadísticas de cada PE
-    printf("\n");
-    printf("================================================================================\n");
-    printf("                         ESTADÍSTICAS DEL SIMULADOR                             \n");
-    printf("================================================================================\n");
+    LOGI("Mostrando estadísticas del simulador");
     
     for (int i = 0; i < NUM_PES; i++) {
         stats_print(&caches[i].stats, i);
@@ -90,11 +87,9 @@ int main() {
     stats_print_summary(stats_array, NUM_PES);
 
     // Imprimir estadísticas de memoria
-    printf("\n");
     memory_stats_print(&mem.stats);
 
     // Imprimir estadísticas del bus
-    printf("\n");
     bus_stats_print(&bus.stats);
 
     // Limpiar recursos

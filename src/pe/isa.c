@@ -1,7 +1,9 @@
+#define LOG_MODULE "ISA"
 #include "isa.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <sched.h>  // Para sched_yield()
+#include "log.h"
 
 const char* opcode_to_str(OpCode op) {
     switch (op) {
@@ -19,63 +21,61 @@ const char* opcode_to_str(OpCode op) {
 }
 
 void print_instruction(Instruction* inst, uint64_t pc) {
-    printf("[PC=%lu] ", pc);
-    
+    // Traza concisa de la instrucción (nivel DEBUG)
     switch (inst->op) {
         case OP_MOV:
-            printf("MOV R%d, %.2f", inst->rd, inst->imm);
+            LOGD("PC=%lu MOV R%d, %.2f", pc, inst->rd, inst->imm);
             break;
         case OP_LOAD:
             if (inst->addr_mode == ADDR_DIRECT) {
-                printf("LOAD R%d, [%d]", inst->rd, inst->addr);
+                LOGD("PC=%lu LOAD R%d, [%d]", pc, inst->rd, inst->addr);
             } else {
-                printf("LOAD R%d, [R%d]", inst->rd, inst->addr_reg);
+                LOGD("PC=%lu LOAD R%d, [R%d]", pc, inst->rd, inst->addr_reg);
             }
             break;
         case OP_STORE:
             if (inst->addr_mode == ADDR_DIRECT) {
-                printf("STORE R%d, [%d]", inst->rd, inst->addr);
+                LOGD("PC=%lu STORE R%d, [%d]", pc, inst->rd, inst->addr);
             } else {
-                printf("STORE R%d, [R%d]", inst->rd, inst->addr_reg);
+                LOGD("PC=%lu STORE R%d, [R%d]", pc, inst->rd, inst->addr_reg);
             }
             break;
         case OP_FADD:
-            printf("FADD R%d, R%d, R%d", inst->rd, inst->ra, inst->rb);
+            LOGD("PC=%lu FADD R%d, R%d, R%d", pc, inst->rd, inst->ra, inst->rb);
             break;
         case OP_FMUL:
-            printf("FMUL R%d, R%d, R%d", inst->rd, inst->ra, inst->rb);
+            LOGD("PC=%lu FMUL R%d, R%d, R%d", pc, inst->rd, inst->ra, inst->rb);
             break;
         case OP_INC:
-            printf("INC R%d", inst->rd);
+            LOGD("PC=%lu INC R%d", pc, inst->rd);
             break;
         case OP_DEC:
-            printf("DEC R%d", inst->rd);
+            LOGD("PC=%lu DEC R%d", pc, inst->rd);
             break;
         case OP_JNZ:
-            printf("JNZ %d", inst->label);
+            LOGD("PC=%lu JNZ %d", pc, inst->label);
             break;
         case OP_HALT:
-            printf("HALT");
+            LOGD("PC=%lu HALT", pc);
             break;
         default:
-            printf("UNKNOWN");
+            LOGD("PC=%lu UNKNOWN", pc);
             break;
     }
-    printf("\n");
 }
 
 int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int pe_id) {
     double val_a, val_b, result;
     int effective_addr;
     
-    // Imprimir instrucción que se va a ejecutar
-    printf("[PE%d] Ejecutando: ", pe_id);
+    // Traza de instrucción (DEBUG)
+    LOGD("PE%d: ejecutando instrucción", pe_id);
     print_instruction(inst, rf->pc);
     
     switch (inst->op) {
         case OP_MOV:
             // MOV Rd, imm - Cargar valor inmediato al registro
-            printf("  [PE%d] MOV: %.6f -> R%d\n", pe_id, inst->imm, inst->rd);
+            LOGD("PE%d: MOV %.6f -> R%d", pe_id, inst->imm, inst->rd);
             reg_write(rf, inst->rd, inst->imm);
             rf->pc++;
             break;
@@ -85,16 +85,15 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             // Calcular dirección efectiva según el modo de direccionamiento
             if (inst->addr_mode == ADDR_DIRECT) {
                 effective_addr = inst->addr;
-                printf("  [PE%d] LOAD: Leyendo memoria[%d] -> R%d\n", pe_id, effective_addr, inst->rd);
+                LOGD("PE%d: LOAD memoria[%d] -> R%d", pe_id, effective_addr, inst->rd);
             } else {
                 effective_addr = (int)reg_read(rf, inst->addr_reg);
-                printf("  [PE%d] LOAD: Leyendo memoria[R%d=%d] -> R%d\n", 
-                       pe_id, inst->addr_reg, effective_addr, inst->rd);
+                LOGD("PE%d: LOAD memoria[R%d=%d] -> R%d", pe_id, inst->addr_reg, effective_addr, inst->rd);
             }
             
             result = cache_read(cache, effective_addr, pe_id);
             reg_write(rf, inst->rd, result);
-            printf("  [PE%d] R%d = %.6f\n", pe_id, inst->rd, result);
+            LOGD("PE%d: R%d = %.6f", pe_id, inst->rd, result);
             rf->pc++;
             break;
             
@@ -105,12 +104,10 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             // Calcular dirección efectiva según el modo de direccionamiento
             if (inst->addr_mode == ADDR_DIRECT) {
                 effective_addr = inst->addr;
-                printf("  [PE%d] STORE: R%d (%.6f) -> memoria[%d]\n", 
-                       pe_id, inst->rd, val_a, effective_addr);
+          LOGD("PE%d: STORE R%d (%.6f) -> memoria[%d]", pe_id, inst->rd, val_a, effective_addr);
             } else {
                 effective_addr = (int)reg_read(rf, inst->addr_reg);
-                printf("  [PE%d] STORE: R%d (%.6f) -> memoria[R%d=%d]\n", 
-                       pe_id, inst->rd, val_a, inst->addr_reg, effective_addr);
+          LOGD("PE%d: STORE R%d (%.6f) -> memoria[R%d=%d]", pe_id, inst->rd, val_a, inst->addr_reg, effective_addr);
             }
             
             cache_write(cache, effective_addr, val_a, pe_id);
@@ -122,8 +119,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             val_a = reg_read(rf, inst->ra);
             val_b = reg_read(rf, inst->rb);
             result = val_a + val_b;
-            printf("  [PE%d] FADD: R%d (%.6f) + R%d (%.6f) = %.6f -> R%d\n", 
-                   pe_id, inst->ra, val_a, inst->rb, val_b, result, inst->rd);
+         LOGD("PE%d: FADD R%d (%.6f) + R%d (%.6f) = %.6f -> R%d", pe_id, inst->ra, val_a, inst->rb, val_b, result, inst->rd);
             reg_write(rf, inst->rd, result);
             reg_update_zero_flag(rf, result);
             rf->pc++;
@@ -134,8 +130,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             val_a = reg_read(rf, inst->ra);
             val_b = reg_read(rf, inst->rb);
             result = val_a * val_b;
-            printf("  [PE%d] FMUL: R%d (%.6f) * R%d (%.6f) = %.6f -> R%d\n", 
-                   pe_id, inst->ra, val_a, inst->rb, val_b, result, inst->rd);
+         LOGD("PE%d: FMUL R%d (%.6f) * R%d (%.6f) = %.6f -> R%d", pe_id, inst->ra, val_a, inst->rb, val_b, result, inst->rd);
             reg_write(rf, inst->rd, result);
             reg_update_zero_flag(rf, result);
             rf->pc++;
@@ -145,7 +140,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             // INC Rd - Incrementar registro
             val_a = reg_read(rf, inst->rd);
             result = val_a + 1.0;
-            printf("  [PE%d] INC: R%d (%.6f) + 1 = %.6f\n", pe_id, inst->rd, val_a, result);
+            LOGD("PE%d: INC R%d (%.6f) + 1 = %.6f", pe_id, inst->rd, val_a, result);
             reg_write(rf, inst->rd, result);
             reg_update_zero_flag(rf, result);
             rf->pc++;
@@ -155,7 +150,7 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
             // DEC Rd - Decrementar registro
             val_a = reg_read(rf, inst->rd);
             result = val_a - 1.0;
-            printf("  [PE%d] DEC: R%d (%.6f) - 1 = %.6f\n", pe_id, inst->rd, val_a, result);
+            LOGD("PE%d: DEC R%d (%.6f) - 1 = %.6f", pe_id, inst->rd, val_a, result);
             reg_write(rf, inst->rd, result);
             reg_update_zero_flag(rf, result);
             rf->pc++;
@@ -164,11 +159,10 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
         case OP_JNZ:
             // JNZ label - Saltar si zero_flag == 0 (última operación != 0)
             if (rf->zero_flag == 0) {
-                printf("  [PE%d] JNZ: zero_flag=0 (última op != 0), saltando a PC=%d\n", 
-                       pe_id, inst->label);
+                LOGD("PE%d: JNZ zero_flag=0, salto a PC=%d", pe_id, inst->label);
                 rf->pc = inst->label;
             } else {
-                printf("  [PE%d] JNZ: zero_flag=1 (última op == 0), no salta\n", pe_id);
+                LOGD("PE%d: JNZ zero_flag=1, no salta", pe_id);
                 rf->pc++;
             }
             break;
@@ -176,13 +170,13 @@ int execute_instruction(Instruction* inst, RegisterFile* rf, Cache* cache, int p
         case OP_HALT:
             // HALT - Terminar ejecución
             // Hacer writeback de todas las líneas modificadas a través del bus
-            printf("  [PE%d] HALT: Haciendo writeback de líneas modificadas...\n", pe_id);
+            LOGD("PE%d: HALT writeback de líneas modificadas", pe_id);
             cache_flush(cache, pe_id);
-            printf("  [PE%d] HALT: Terminando ejecución\n", pe_id);
+            LOGD("PE%d: HALT fin de ejecución", pe_id);
             return 0;  // Señal para detener ejecución
             
         default:
-            printf("  [PE%d] ERROR: OpCode desconocido %d\n", pe_id, inst->op);
+            LOGE("PE%d: opcode desconocido %d", pe_id, inst->op);
             return 0;
     }
     

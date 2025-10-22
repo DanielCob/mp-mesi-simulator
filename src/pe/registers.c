@@ -43,7 +43,7 @@ void reg_update_zero_flag(RegisterFile* rf, double value) {
 }
 
 void reg_print(RegisterFile* rf, int pe_id) {
-    printf("\n========== PE%d Register File ==========\n", pe_id);
+    printf("\n[PE%d registros]\n", pe_id);
     printf("PC: %lu\n", rf->pc);
     printf("Zero Flag: %d\n", rf->zero_flag);
     printf("Registers:\n");
@@ -63,5 +63,5 @@ void reg_print(RegisterFile* rf, int pe_id) {
         printf("\n");
     }
     
-    printf("========================================\n\n");
+    printf("\n");
 }

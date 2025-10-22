@@ -37,14 +37,14 @@ static void init_label_table(LabelTable* table) {
  */
 static int add_label(LabelTable* table, const char* name, int line_number) {
     if (table->count >= MAX_LABELS) {
-        fprintf(stderr, "[Loader] ERROR: Demasiados labels (máximo %d)\n", MAX_LABELS);
+    fprintf(stderr, "[Loader] ERROR: demasiados labels (máximo %d)\n", MAX_LABELS);
         return -1;
     }
     
     // Verificar si el label ya existe
     for (int i = 0; i < table->count; i++) {
         if (strcmp(table->labels[i].name, name) == 0) {
-            fprintf(stderr, "[Loader] ERROR: Label duplicado: %s\n", name);
+            fprintf(stderr, "[Loader] ERROR: label duplicado: %s\n", name);
             return -1;
         }
     }
@@ -243,12 +243,12 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7[^,], %lf", reg1, &imm_value) == 2) {
                 inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: Registro inválido en MOV: %s\n", reg1);
+                    fprintf(stderr, "[Loader] ERROR: registro inválido en MOV: %s\n", reg1);
                     return -1;
                 }
                 inst->imm = imm_value;
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para MOV: %s\n", operands);
+                fprintf(stderr, "[Loader] ERROR: formato inválido para MOV: %s\n", operands);
                 return -1;
             }
             break;
@@ -258,7 +258,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7[^,], [%31[^]]]", reg1, addr_str) == 2) {
                 inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: Registro inválido en LOAD: %s\n", reg1);
+                    fprintf(stderr, "[Loader] ERROR: registro inválido en LOAD: %s\n", reg1);
                     return -1;
                 }
                 
@@ -268,7 +268,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                     // Es direccionamiento indirecto [Rx]
                     inst->addr_reg = parse_register(trimmed_addr);
                     if (inst->addr_reg < 0) {
-                        fprintf(stderr, "[Loader] ERROR: Registro de dirección inválido en LOAD: [%s]\n", 
+            fprintf(stderr, "[Loader] ERROR: registro de dirección inválido en LOAD: [%s]\n", 
                                 trimmed_addr);
                         return -1;
                     }
@@ -279,7 +279,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                     inst->addr_mode = ADDR_DIRECT;
                 }
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para LOAD (use [addr] o [Rx]): %s\n", operands);
+                fprintf(stderr, "[Loader] ERROR: formato inválido para LOAD (use [addr] o [Rx]): %s\n", operands);
                 return -1;
             }
             break;
@@ -289,7 +289,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7[^,], [%31[^]]]", reg1, addr_str) == 2) {
                 inst->rd = parse_register(reg1);  // rd se usa como source en STORE
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: Registro inválido en STORE: %s\n", reg1);
+                    fprintf(stderr, "[Loader] ERROR: registro inválido en STORE: %s\n", reg1);
                     return -1;
                 }
                 
@@ -299,7 +299,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                     // Es direccionamiento indirecto [Rx]
                     inst->addr_reg = parse_register(trimmed_addr);
                     if (inst->addr_reg < 0) {
-                        fprintf(stderr, "[Loader] ERROR: Registro de dirección inválido en STORE: [%s]\n", 
+            fprintf(stderr, "[Loader] ERROR: registro de dirección inválido en STORE: [%s]\n", 
                                 trimmed_addr);
                         return -1;
                     }
@@ -310,7 +310,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                     inst->addr_mode = ADDR_DIRECT;
                 }
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para STORE (use [addr] o [Rx]): %s\n", operands);
+                fprintf(stderr, "[Loader] ERROR: formato inválido para STORE (use [addr] o [Rx]): %s\n", operands);
                 return -1;
             }
             break;
@@ -323,12 +323,12 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                 inst->ra = parse_register(reg2);
                 inst->rb = parse_register(reg3);
                 if (inst->rd < 0 || inst->ra < 0 || inst->rb < 0) {
-                    fprintf(stderr, "[Loader] ERROR: Registro inválido en %s: %s %s %s\n",
+            fprintf(stderr, "[Loader] ERROR: registro inválido en %s: %s %s %s\n",
                             opcode_str, reg1, reg2, reg3);
                     return -1;
                 }
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para %s: %s\n", 
+        fprintf(stderr, "[Loader] ERROR: formato inválido para %s: %s\n", 
                         opcode_str, operands);
                 return -1;
             }
@@ -340,12 +340,12 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             if (sscanf(operands, "%7s", reg1) == 1) {
                 inst->rd = parse_register(reg1);
                 if (inst->rd < 0) {
-                    fprintf(stderr, "[Loader] ERROR: Registro inválido en %s: %s\n",
+            fprintf(stderr, "[Loader] ERROR: registro inválido en %s: %s\n",
                             opcode_str, reg1);
                     return -1;
                 }
             } else {
-                fprintf(stderr, "[Loader] ERROR: Formato inválido para %s: %s\n",
+        fprintf(stderr, "[Loader] ERROR: formato inválido para %s: %s\n",
                         opcode_str, operands);
                 return -1;
             }
@@ -370,13 +370,13 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
                         // Es un nombre de label, buscar en la tabla
                         int label_line = find_label(label_table, label_str);
                         if (label_line < 0) {
-                            fprintf(stderr, "[Loader] ERROR: Label no encontrado: %s\n", label_str);
+                            fprintf(stderr, "[Loader] ERROR: label no encontrado: %s\n", label_str);
                             return -1;
                         }
                         inst->label = label_line;
                     }
                 } else {
-                    fprintf(stderr, "[Loader] ERROR: Formato inválido para JNZ: %s\n", operands);
+                    fprintf(stderr, "[Loader] ERROR: formato inválido para JNZ: %s\n", operands);
                     return -1;
                 }
             }
@@ -387,7 +387,7 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
             break;
             
         default:
-            fprintf(stderr, "[Loader] ERROR: Opcode no reconocido: %s\n", opcode_str);
+            fprintf(stderr, "[Loader] ERROR: opcode no reconocido: %s\n", opcode_str);
             return -1;
     }
     
@@ -397,11 +397,11 @@ static int parse_line(const char* line, Instruction* inst, const LabelTable* lab
 Program* load_program(const char* filename) {
     FILE* file = fopen(filename, "r");
     if (!file) {
-        fprintf(stderr, "[Loader] ERROR: No se pudo abrir el archivo: %s\n", filename);
+    fprintf(stderr, "[Loader] ERROR: no se pudo abrir el archivo: %s\n", filename);
         return NULL;
     }
     
-    printf("[Loader] Cargando programa desde: %s\n", filename);
+    printf("[Loader] Cargando programa: %s\n", filename);
     
     // ===== PRIMERA PASADA: Recolectar labels =====
     LabelTable label_table;
@@ -431,7 +431,7 @@ Program* load_program(const char* filename) {
                 fclose(file);
                 return NULL;
             }
-            printf("[Loader]   Label '%s' -> línea %d\n", label_name, instruction_count);
+            printf("[Loader]   Etiqueta '%s' -> línea %d\n", label_name, instruction_count);
             
             // Verificar si hay una instrucción en la misma línea después del label
             if (strlen(rest) > 0) {
@@ -544,15 +544,13 @@ void print_program(const Program* prog) {
         return;
     }
     
-    printf("\n╔════════════════════════════════════════════════════╗\n");
-    printf("║           PROGRAMA CARGADO (%d instrucciones)      \n", prog->size);
-    printf("╠════════════════════════════════════════════════════╣\n");
+    printf("\n[Programa cargado: %d instrucciones]\n", prog->size);
     
     for (int i = 0; i < prog->size; i++) {
         Instruction* inst = &prog->code[i];
         const char* op_name = opcode_to_string_local(inst->op);
         
-        printf("║ [%3d] %-8s ", i, op_name);
+    printf("[%3d] %-8s ", i, op_name);
         
         switch (inst->op) {
             case OP_MOV:
@@ -590,5 +588,5 @@ void print_program(const Program* prog) {
         printf("\n");
     }
     
-    printf("╚════════════════════════════════════════════════════╝\n\n");
+    printf("\n");
 }

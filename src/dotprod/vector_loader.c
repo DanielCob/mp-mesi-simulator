@@ -1,8 +1,10 @@
+#define LOG_MODULE "DOTPROD"
 #include "vector_loader.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "log.h"
 
 // Tamaño máximo de línea que se puede leer
 #define MAX_LINE_LENGTH 4096
@@ -90,8 +92,7 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
         
         // Si no se leyó ningún valor, reportar advertencia
         if (count == old_count) {
-            fprintf(stderr, "[VectorLoader] Warning: línea %d no contiene valores válidos\n", 
-                    line_number);
+            LOGW("Línea %d sin valores válidos", line_number);
         }
     }
     
@@ -109,7 +110,7 @@ VectorLoadResult load_vector_from_csv(const char* filename, double* buffer, int 
 }
 
 void print_vector(const char* name, const double* buffer, int size, int start_addr) {
-    printf("[DotProd] Loading %s at addresses %d-%d:\n  %s = [", 
+    printf("[DotProd] Cargando %s en direcciones %d-%d\n  %s = [", 
            name, start_addr, start_addr + size - 1, name);
     
     for (int i = 0; i < size; i++) {
