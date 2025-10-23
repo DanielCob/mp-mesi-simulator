@@ -3,50 +3,69 @@
 
 #include "config.h"
 #include "cache_stats.h"
-#include "mesi.h"
 #include <pthread.h>
 
-// Forward declaration para evitar dependencia circular
+// FORWARD DECLARATIONS
 struct Bus;
 typedef struct Bus Bus;
 
+// STRUCTURES
+
+/**
+ * Cache line
+ * Contains one BLOCK_SIZE block of doubles plus metadata
+ */
 typedef struct {
-    unsigned long tag;
-    MESI_State state;
-    double data[BLOCK_SIZE];
-    int valid;
-    int lru_bit;  // Bit LRU: 1 = recientemente usado, 0 = menos recientemente usado
+    unsigned long tag;          // Address tag
+    MESI_State state;           // MESI state (M, E, S, I)
+    double data[BLOCK_SIZE];    // Block data
+    int valid;                  // 1 = valid, 0 = invalid
+    int lru_bit;                // LRU bit for replacement
 } CacheLine;
 
+/**
+ * Cache set
+ * Contains WAYS lines
+ */
 typedef struct {
-    CacheLine lines[WAYS];
+    CacheLine lines[WAYS];      // Set lines
 } CacheSet;
 
+/**
+ * Private L1 cache with MESI protocol
+ * Thread-safe via mutex
+ */
 typedef struct {
-    Bus* bus;
-    CacheSet sets[SETS];
-    pthread_mutex_t mutex;  // Mutex para proteger acceso concurrente
-    CacheStats stats;       // Estadísticas de esta caché
-    int pe_id;              // ID del PE dueño de esta caché
+    Bus* bus;                   // Reference to shared bus
+    CacheSet sets[SETS];        // Array of sets
+    pthread_mutex_t mutex;      // Synchronization mutex
+    CacheStats stats;           // Access statistics
+    int pe_id;                  // Owning PE id
 } Cache;
 
+// PUBLIC API
+
+// Init and cleanup
 void cache_init(Cache* cache);
-void cache_destroy(Cache* cache);  // Nueva función para limpiar recursos
+void cache_destroy(Cache* cache);
 
-// Funciones que requieren alineamiento (addr debe ser múltiplo de BLOCK_SIZE)
-double cache_read(Cache* cache, int addr, int pe_id);   // Requiere IS_ALIGNED(addr)
-void cache_write(Cache* cache, int addr, double value, int pe_id);  // Requiere IS_ALIGNED(addr)
+// Read/write operations
+double cache_read(Cache* cache, int addr, int pe_id);
+void cache_write(Cache* cache, int addr, double value, int pe_id);
 
-// Política de reemplazo
+// Replacement policy
 CacheLine* cache_select_victim(Cache* cache, int set_index, int pe_id);
 
-// Funciones auxiliares para el protocolo MESI
+// MESI coherence operations
 CacheLine* cache_get_line(Cache* cache, int addr);
 MESI_State cache_get_state(Cache* cache, int addr);
 void cache_set_state(Cache* cache, int addr, MESI_State new_state);
 
-// Funciones de acceso a bloques completos (para handlers del bus)
+// Block operations
 void cache_get_block(Cache* cache, int addr, double block[BLOCK_SIZE]);
 void cache_set_block(Cache* cache, int addr, const double block[BLOCK_SIZE]);
+
+// Flush
+void cache_flush(Cache* cache, int pe_id);
 
 #endif

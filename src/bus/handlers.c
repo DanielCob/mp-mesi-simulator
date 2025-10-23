@@ -1,7 +1,11 @@
+#define LOG_MODULE "BUS"
 #include "handlers.h"
 #include "memory.h"
 #include "cache.h"
 #include <stdio.h>
+#include "log.h"
+
+// HANDLER REGISTRATION
 
 void bus_register_handlers(Bus* bus) {
     bus->handlers[BUS_RD]   = handle_busrd;
@@ -10,134 +14,135 @@ void bus_register_handlers(Bus* bus) {
     bus->handlers[BUS_WB]   = handle_buswb;
 }
 
+// HANDLER: BUS_RD (Shared read)
+
 void handle_busrd(Bus* bus, int addr, int src_pe) {
-    // BUS_RD: Otro procesador quiere leer la línea
-    // THREAD-SAFETY: Este handler es llamado por el bus thread (serializado)
-    // Las funciones cache_get/set_* ya tienen mutex interno
     int data_found = 0;
     Cache* requestor = bus->caches[src_pe];
     
     for (int i = 0; i < NUM_PES; i++) {
         if (i != src_pe) {
             Cache* cache = bus->caches[i];
-            // cache_get_state tiene mutex interno
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == M) {
-                // Proveer bloque completo y escribir a memoria
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK y pasando a S\n", i);
-                mem_write_block(bus->memory, addr, block, src_pe);  // ← Escribe bloque completo
-                // Proveer el bloque al solicitante
+                LOGD("Cache PE%d: M -> writeback and move to S", i);
+                mem_write_block(bus->memory, addr, block, src_pe);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(cache, addr, S);
-                cache_set_state(requestor, addr, S);
+                cache_set_state(cache, addr, S);      // M->S (record transition)
+                cache_set_state(requestor, addr, S);  // I->S (record transition)
                 data_found = 1;
-                return;  // Ya completamos la operación
+                return;
             } else if (state == E) {
-                // Proveer bloque, no necesita writeback
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en E, pasando a S\n", i);
+                LOGD("Cache PE%d: E -> move to S", i);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(cache, addr, S);
-                cache_set_state(requestor, addr, S);
+                cache_set_state(cache, addr, S);      // E->S (record transition)
+                cache_set_state(requestor, addr, S);  // I->S (record transition)
                 data_found = 1;
-                return;  // Ya completamos la operación
+                return;
             } else if (state == S && !data_found) {
-                // Tomar el bloque de cualquier cache que lo tenga en S
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en S, compartiendo\n", i);
+                LOGD("Cache PE%d: S -> sharing", i);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(requestor, addr, S);
+                cache_set_state(requestor, addr, S);  // I->S (record transition)
                 data_found = 1;
-                return;  // Ya completamos la operación
+                return;
             }
         }
     }
 
-    // Si ningún cache tiene el dato, leer de memoria
+    // No cache has the data, read from memory
     if (!data_found) {
-        printf("[Bus] Read miss, leyendo BLOQUE desde memoria addr=%d\n", addr);
+        LOGD("Read miss: reading block from memory addr=0x%X", addr);
         double block[BLOCK_SIZE];
-        mem_read_block(bus->memory, addr, block, src_pe);  // ← Lee bloque completo
-        printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
-               block[0], block[1], block[2], block[3]);
-        // El primer lector obtiene estado E
-        cache_set_block(requestor, addr, block);  // ← Establece bloque completo
-        cache_set_state(requestor, addr, E);
+        mem_read_block(bus->memory, addr, block, src_pe);
+        LOGD("Memory returns block [%.2f, %.2f, %.2f, %.2f]", 
+             block[0], block[1], block[2], block[3]);
+        cache_set_block(requestor, addr, block);
+        cache_set_state(requestor, addr, E);  // I->E (record transition)
     }
-    // Nota: Si data_found es true, ya hicimos return en el loop
 }
 
+// HANDLER: BUS_RDX (Exclusive read for write)
+
 void handle_busrdx(Bus* bus, int addr, int src_pe) {
-    // BUS_RDX: Otro procesador quiere escribir (pide permisos exclusivos)
-    // THREAD-SAFETY: Este handler es llamado por el bus thread (serializado)
-    // Las funciones cache_get/set_* ya tienen mutex interno
     int data_found = 0;
-    int invalidations_count = 0;  // Contar invalidaciones
+    int invalidations_count = 0;
     Cache* requestor = bus->caches[src_pe];
     
     for (int i = 0; i < NUM_PES; i++) {
         if (i != src_pe) {
             Cache* cache = bus->caches[i];
-            // cache_get_state tiene mutex interno
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == M) {
-                // Proveer bloque completo y escribir a memoria
                 double block[BLOCK_SIZE];
                 cache_get_block(cache, addr, block);
-                printf("  [Cache PE%d] Tiene bloque en M, haciendo WRITEBACK e INVALIDANDO\n", i);
-                mem_write_block(bus->memory, addr, block, src_pe);  // ← Escribe bloque completo
-                // Proveer bloque al solicitante
+                LOGD("Cache PE%d: M -> writeback and invalidate", i);
+                mem_write_block(bus->memory, addr, block, src_pe);
                 cache_set_block(requestor, addr, block);
-                cache_set_state(cache, addr, I);
-                cache_set_state(requestor, addr, M);
+                cache_set_state(cache, addr, I);      // M->I (record transition)
+                cache_set_state(requestor, addr, M);  // I->M (record transition)
                 data_found = 1;
                 invalidations_count++;
+                // Record invalidations before early return
+                if (invalidations_count > 0) {
+                    bus_stats_record_invalidations(&bus->stats, invalidations_count);
+                    // Count actual broadcast invalidations as sent by the requestor
+                    for (int k = 0; k < invalidations_count; k++) {
+                        stats_record_invalidation_sent(&requestor->stats);
+                    }
+                    // Account additional control per invalidated cache
+                    bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
+                }
                 return;
             } else if (state == E || state == S) {
                 if (!data_found) {
-                    // Proveer bloque solo si aún no se encontró
                     double block[BLOCK_SIZE];
                     cache_get_block(cache, addr, block);
-                    printf("  [Cache PE%d] Tiene bloque en %c, proveyendo e INVALIDANDO\n", i, state == E ? 'E' : 'S');
+                    LOGD("Cache PE%d: %c -> provide and invalidate", i, state == E ? 'E' : 'S');
                     cache_set_block(requestor, addr, block);
-                    cache_set_state(requestor, addr, M);
+                    cache_set_state(requestor, addr, M);  // I->M (record transition)
                     data_found = 1;
                 }
-                // Invalidar en todos los casos (E o S)
-                cache_set_state(cache, addr, I);
+                cache_set_state(cache, addr, I);  // E->I or S->I (record transition)
                 invalidations_count++;
             }
         }
     }
     
-    // Registrar invalidaciones
     if (invalidations_count > 0) {
         bus_stats_record_invalidations(&bus->stats, invalidations_count);
+        // Count actual broadcast invalidations as sent by the requestor
+        for (int k = 0; k < invalidations_count; k++) {
+            stats_record_invalidation_sent(&requestor->stats);
+        }
+        // Account additional control per invalidated cache
+        bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
     }
     
-    // Si ningún cache tiene el dato, leer de memoria
+    // No cache has the data, read from memory
     if (!data_found) {
-        printf("[Bus] Write miss, leyendo BLOQUE desde memoria addr=%d\n", addr);
+        LOGD("Write miss: reading block from memory addr=0x%X", addr);
         double block[BLOCK_SIZE];
-        mem_read_block(bus->memory, addr, block, src_pe);  // ← Lee bloque completo
-        printf("  [Memoria] Devolviendo bloque [%.2f, %.2f, %.2f, %.2f]\n", 
-               block[0], block[1], block[2], block[3]);
-        // El escritor obtiene estado M
-        cache_set_block(requestor, addr, block);  // ← Establece bloque completo
-        cache_set_state(requestor, addr, M);
+        mem_read_block(bus->memory, addr, block, src_pe);
+        LOGD("Memory returns block [%.2f, %.2f, %.2f, %.2f]", 
+             block[0], block[1], block[2], block[3]);
+        cache_set_block(requestor, addr, block);
+        cache_set_state(requestor, addr, M);  // I->M (record transition)
     }
 }
 
+// HANDLER: BUS_UPGR (Upgrade from Shared to Modified)
+
 void handle_busupgr(Bus* bus, int addr, int src_pe) {
-    // BUS_UPGR: Un procesador quiere actualizar de S a M
-    // THREAD-SAFETY: Serializado por el bus thread
     Cache* requestor = bus->caches[src_pe];
+    int invalidations_count = 0;
     
     for (int i = 0; i < NUM_PES; i++) {
         if (i != src_pe) {
@@ -145,27 +150,36 @@ void handle_busupgr(Bus* bus, int addr, int src_pe) {
             MESI_State state = cache_get_state(cache, addr);
             
             if (state == S) {
-                printf("  [Cache PE%d] Invalidando línea en S\n", i);
-                cache_set_state(cache, addr, I);
+                LOGD("Cache PE%d: invalidate line in S", i);
+                cache_set_state(cache, addr, I);  // S->I (record transition)
+                invalidations_count++;
             }
         }
     }
 
-    // El dato ya está en el cache, solo actualizamos estado
-    cache_set_state(requestor, addr, M);
+    if (invalidations_count > 0) {
+        bus_stats_record_invalidations(&bus->stats, invalidations_count);
+        for (int k = 0; k < invalidations_count; k++) {
+            stats_record_invalidation_sent(&requestor->stats);
+        }
+        // Account additional control per invalidated cache
+        bus_stats_record_control_invalidations(&bus->stats, invalidations_count * INVALIDATION_CONTROL_SIGNAL_SIZE);
+    }
+
+    cache_set_state(requestor, addr, M);  // S->M (record transition)
 }
 
+// HANDLER: BUS_WB (Writeback to memory)
+
 void handle_buswb(Bus* bus, int addr, int src_pe) {
-    // BUS_WB: Un procesador está escribiendo de vuelta a memoria
-    // THREAD-SAFETY: Serializado por el bus thread
     Cache* writer = bus->caches[src_pe];
     
     if (cache_get_state(writer, addr) == M) {
         double block[BLOCK_SIZE];
-        cache_get_block(writer, addr, block);  // ← Obtiene bloque completo
-        printf("[Bus] Writeback BLOQUE a memoria addr=%d [%.2f, %.2f, %.2f, %.2f]\n", 
-               addr, block[0], block[1], block[2], block[3]);
-        mem_write_block(bus->memory, addr, block, src_pe);  // ← Escribe bloque completo
+        cache_get_block(writer, addr, block);
+        LOGD("Write block to memory addr=0x%X [%.2f, %.2f, %.2f, %.2f]", 
+             addr, block[0], block[1], block[2], block[3]);
+        mem_write_block(bus->memory, addr, block, src_pe);
     }
     
     cache_set_state(writer, addr, I);

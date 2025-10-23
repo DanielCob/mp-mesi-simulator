@@ -1,16 +1,18 @@
+#define LOG_MODULE "MEMORY"
 #include "memory.h"
 #include <stdio.h>
+#include "log.h"
+
+// INIT AND CLEANUP
 
 void mem_init(Memory* mem) {
-    // Inicializar datos
+    // Initialize data to zero
     for (int i = 0; i < MEM_SIZE; i++) {
         mem->data[i] = 0.0;
     }
     
-    // Inicializar estadísticas
     memory_stats_init(&mem->stats);
     
-    // Inicializar sincronización
     pthread_mutex_init(&mem->mutex, NULL);
     pthread_cond_init(&mem->request_ready, NULL);
     pthread_cond_init(&mem->current_request.done, NULL);
@@ -19,47 +21,47 @@ void mem_init(Memory* mem) {
     mem->running = true;
     mem->current_request.processed = false;
     
-    printf("[MEMORY] Initialized.\n");
+    LOGI("Initialized");
 }
 
 void mem_destroy(Memory* mem) {
     mem->running = false;
-    pthread_cond_broadcast(&mem->request_ready);  // Despertar thread de memoria
+    pthread_cond_broadcast(&mem->request_ready);
     pthread_mutex_destroy(&mem->mutex);
     pthread_cond_destroy(&mem->request_ready);
     pthread_cond_destroy(&mem->current_request.done);
 }
 
+// BLOCK READ/WRITE OPERATIONS
+
 void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) {
-    // Verificar alineamiento
     if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[MEMORY ERROR] Read block address %d is not aligned\n", addr);
+    LOGW("block read: unaligned address 0x%X (adjusting)", addr);
         addr = ALIGN_DOWN(addr);
     }
     
     pthread_mutex_lock(&mem->mutex);
     
-    // Esperar si hay otra solicitud en proceso
+    // Wait if another request is being processed
     while (mem->has_request) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Preparar solicitud de lectura de bloque
+    // Prepare read request
     mem->current_request.op = MEM_OP_READ_BLOCK;
     mem->current_request.addr = addr;
     mem->current_request.pe_id = pe_id;
     mem->current_request.processed = false;
     mem->has_request = true;
     
-    // Señalizar al thread de memoria
     pthread_cond_signal(&mem->request_ready);
     
-    // Esperar a que la memoria procese la solicitud
+    // Wait for processing
     while (!mem->current_request.processed) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Copiar resultado
+    // Copy result
     for (int i = 0; i < BLOCK_SIZE; i++) {
         block[i] = mem->current_request.block[i];
     }
@@ -68,20 +70,19 @@ void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id) 
 }
 
 void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int pe_id) {
-    // Verificar alineamiento
     if (!IS_ALIGNED(addr)) {
-        fprintf(stderr, "[MEMORY ERROR] Write block address %d is not aligned\n", addr);
+    LOGW("block write: unaligned address 0x%X (adjusting)", addr);
         addr = ALIGN_DOWN(addr);
     }
     
     pthread_mutex_lock(&mem->mutex);
     
-    // Esperar si hay otra solicitud en proceso
+    // Wait if another request is being processed
     while (mem->has_request) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
     
-    // Preparar solicitud de escritura de bloque
+    // Prepare write request
     mem->current_request.op = MEM_OP_WRITE_BLOCK;
     mem->current_request.addr = addr;
     mem->current_request.pe_id = pe_id;
@@ -91,10 +92,9 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
     mem->current_request.processed = false;
     mem->has_request = true;
     
-    // Señalizar al thread de memoria
     pthread_cond_signal(&mem->request_ready);
     
-    // Esperar a que la memoria procese la solicitud
+    // Wait for processing
     while (!mem->current_request.processed) {
         pthread_cond_wait(&mem->current_request.done, &mem->mutex);
     }
@@ -102,14 +102,16 @@ void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int 
     pthread_mutex_unlock(&mem->mutex);
 }
 
+// MEMORY THREAD
+
 void* mem_thread_func(void* arg) {
     Memory* mem = (Memory*)arg;
-    printf("[MEMORY] Thread iniciado.\n");
+    LOGD("Thread started");
     
     while (mem->running) {
         pthread_mutex_lock(&mem->mutex);
         
-        // Esperar por solicitudes
+        // Wait for incoming requests
         while (!mem->has_request && mem->running) {
             pthread_cond_wait(&mem->request_ready, &mem->mutex);
         }
@@ -119,33 +121,30 @@ void* mem_thread_func(void* arg) {
             break;
         }
         
-        // Procesar la solicitud
         MemRequest* req = &mem->current_request;
-        
         pthread_mutex_unlock(&mem->mutex);
         
-        // Ejecutar operación (fuera del lock)
+    // Process request (outside lock to allow parallel ops)
         if (req->op == MEM_OP_READ_BLOCK) {
-            printf("[MEMORY] READ_BLOCK addr=%d (reading %d doubles) from PE%d\n", 
-                   req->addr, BLOCK_SIZE, req->pe_id);
+          LOGD("READ_BLOCK addr=0x%X (%d doubles) from PE%d", 
+              req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 req->block[i] = mem->data[req->addr + i];
             }
-            // Registrar estadística
             memory_stats_record_read(&mem->stats, req->pe_id, BLOCK_SIZE * sizeof(double));
-        } else if (req->op == MEM_OP_WRITE_BLOCK) {
-            printf("[MEMORY] WRITE_BLOCK addr=%d (writing %d doubles) from PE%d\n", 
-                   req->addr, BLOCK_SIZE, req->pe_id);
+        } 
+        else if (req->op == MEM_OP_WRITE_BLOCK) {
+          LOGD("WRITE_BLOCK addr=0x%X (%d doubles) from PE%d", 
+              req->addr, BLOCK_SIZE, req->pe_id);
             for (int i = 0; i < BLOCK_SIZE; i++) {
                 mem->data[req->addr + i] = req->block[i];
             }
-            // Registrar estadística
             memory_stats_record_write(&mem->stats, req->pe_id, BLOCK_SIZE * sizeof(double));
         }
         
         pthread_mutex_lock(&mem->mutex);
         
-        // Marcar como procesada y señalizar
+    // Mark as processed and signal
         req->processed = true;
         mem->has_request = false;
         pthread_cond_broadcast(&mem->current_request.done);
@@ -153,6 +152,6 @@ void* mem_thread_func(void* arg) {
         pthread_mutex_unlock(&mem->mutex);
     }
     
-    printf("[MEMORY] Thread terminado.\n");
+    LOGD("Thread finished");
     return NULL;
 }

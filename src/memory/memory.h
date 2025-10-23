@@ -6,41 +6,53 @@
 #include <pthread.h>
 #include <stdbool.h>
 
-// Tipos de operaciones de memoria
+// MEMORY OPERATION TYPES
+
 typedef enum { 
-    MEM_OP_READ_BLOCK,  // Lee un bloque completo (BLOCK_SIZE doubles)
-    MEM_OP_WRITE_BLOCK  // Escribe un bloque completo (BLOCK_SIZE doubles)
+    MEM_OP_READ_BLOCK,   // Read a full block (BLOCK_SIZE doubles)
+    MEM_OP_WRITE_BLOCK   // Write a full block (BLOCK_SIZE doubles)
 } MemOp;
 
-// Estructura de solicitud de memoria
+// ESTRUCTURAS
+
+/**
+ * Memory request
+ * Encapsulates a block read/write operation
+ */
 typedef struct {
     MemOp op;
-    int addr;                    // Dirección base del bloque
-    double block[BLOCK_SIZE];    // Para operaciones de bloque
-    int pe_id;                   // ID del PE que hace la solicitud
-    bool processed;
-    pthread_cond_t done;
+    int addr;                     // Block base address (must be aligned)
+    double block[BLOCK_SIZE];     // Data buffer for the block
+    int pe_id;                    // Requesting PE id
+    bool processed;               // Processing flag
+    pthread_cond_t done;          // Synchronization condition
 } MemRequest;
 
-// Estructura de la memoria
+/**
+ * Shared main memory
+ * Thread-safe with a dedicated thread to process requests
+ */
 typedef struct {
-    double data[MEM_SIZE];
-    pthread_mutex_t mutex;
-    pthread_cond_t request_ready;
-    MemRequest current_request;
-    bool has_request;
-    bool running;
-    MemoryStats stats;  // Estadísticas de accesos a memoria
+    double data[MEM_SIZE];            // Data array
+    pthread_mutex_t mutex;            // Synchronization mutex
+    pthread_cond_t request_ready;     // Pending request signal
+    MemRequest current_request;       // Current request
+    bool has_request;                 // Pending request flag
+    bool running;                     // Memory thread running flag
+    MemoryStats stats;                // Access statistics
 } Memory;
 
-// Funciones públicas
+// PUBLIC API
+
+// Init and cleanup
 void mem_init(Memory* mem);
 void mem_destroy(Memory* mem);
 
-// Funciones de bloque completo (para uso del bus)
+// Block operations (used by the bus)
 void mem_read_block(Memory* mem, int addr, double block[BLOCK_SIZE], int pe_id);
 void mem_write_block(Memory* mem, int addr, const double block[BLOCK_SIZE], int pe_id);
 
-void* mem_thread_func(void* arg);  // Función del thread de memoria
+// Memory thread
+void* mem_thread_func(void* arg);
 
 #endif

@@ -1,3 +1,4 @@
+#define LOG_MODULE "PE"
 #include "pe.h"
 #include "registers.h"
 #include "isa.h"
@@ -5,104 +6,63 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include "log.h"
+#include "debug/debug.h"
 
 void* pe_run(void* arg) {
     PE* pe = (PE*)arg;
-    printf("[PE%d] Starting thread...\n", pe->id);
+    LOGD("PE%d: starting thread", pe->id);
     
-    // ===== CARGAR PROGRAMA DESDE ARCHIVO =====
-    // Cada PE puede ejecutar un programa diferente o el mismo
-    // Formato: test_suma.asm, test_loop.asm, etc.
+    // ===== LOAD PROGRAM FROM FILE =====
+    // Each PE executes its portion of the parallel dot product
+    // PE0-PE2: compute partial products
+    // PE3: compute partial product + final reduction
     
-    // Por defecto, todos los PEs ejecutan el mismo programa
-    // Puedes cambiar esto para que cada PE ejecute un programa diferente
     const char* program_files[] = {
-        "asm/test_suma.asm",      // PE0
-        "asm/test_producto.asm",  // PE1
-        "asm/test_loop.asm",       // PE2
-        "asm/test_isa.asm"       // PE3
+    ASM_DOTPROD_PE0_PATH,   // PE0: elements [0-3]
+    ASM_DOTPROD_PE1_PATH,   // PE1: elements [4-7]
+    ASM_DOTPROD_PE2_PATH,   // PE2: elements [8-11]
+    ASM_DOTPROD_PE3_PATH    // PE3: elements [12-15] + reduction
     };
     
     const char* filename = program_files[pe->id];
     
-    printf("\n[PE%d] ========== CARGANDO PROGRAMA ==========\n", pe->id);
-    printf("[PE%d] Archivo: %s\n", pe->id, filename);
+    LOGI("PE%d: loading program", pe->id);
+    LOGD("PE%d: file=%s", pe->id, filename);
     
     Program* prog = load_program(filename);
     
     if (!prog) {
-        fprintf(stderr, "[PE%d] ERROR: No se pudo cargar el programa %s\n", pe->id, filename);
+    LOGE("PE%d: could not load program %s", pe->id, filename);
         return NULL;
     }
     
-    printf("[PE%d] Programa cargado: %d instrucciones\n", pe->id, prog->size);
+    LOGI("PE%d: program loaded, instructions=%d", pe->id, prog->size);
     
-    // Imprimir el programa cargado
-    printf("\n[PE%d] Contenido del programa:\n", pe->id);
-    for (int i = 0; i < prog->size && i < 10; i++) {  // Mostrar máximo 10 instrucciones
-        Instruction* inst = &prog->code[i];
-        printf("[PE%d]   [%2d] %s ", pe->id, i, 
-               inst->op == OP_LOAD ? "LOAD" :
-               inst->op == OP_STORE ? "STORE" :
-               inst->op == OP_FADD ? "FADD" :
-               inst->op == OP_FMUL ? "FMUL" :
-               inst->op == OP_INC ? "INC" :
-               inst->op == OP_DEC ? "DEC" :
-               inst->op == OP_JNZ ? "JNZ" : "HALT");
-        
-        switch (inst->op) {
-            case OP_LOAD:
-            case OP_STORE:
-                printf("R%d, [%d]", inst->rd, inst->addr);
-                break;
-            case OP_FADD:
-            case OP_FMUL:
-                printf("R%d, R%d, R%d", inst->rd, inst->ra, inst->rb);
-                break;
-            case OP_INC:
-            case OP_DEC:
-                printf("R%d", inst->rd);
-                break;
-            case OP_JNZ:
-                printf("%d", inst->label);
-                break;
-            case OP_HALT:
-                break;
-        }
-        printf("\n");
-    }
-    if (prog->size > 10) {
-        printf("[PE%d]   ... (%d instrucciones más)\n", pe->id, prog->size - 10);
-    }
+    LOGI("PE%d: starting execution", pe->id);
     
-    // Inicializar memoria con valores de prueba para cada PE
-    // Cada PE tiene su región de memoria: PE0 usa 100-199, PE1 usa 200-299, etc.
-    int base_addr = 100 + pe->id * 100;  // PE0→100, PE1→200, PE2→300, PE3→400
-    
-    double val1 = 6.0;
-    double val2 = 3.5;
-    
-    printf("\n[PE%d] Inicializando memoria de prueba:\n", pe->id);
-    printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr, val1);
-    printf("[PE%d]   memoria[%d] = %.2f\n", pe->id, base_addr + 4, val2);
-    
-    cache_write(pe->cache, base_addr, val1, pe->id);
-    cache_write(pe->cache, base_addr + 4, val2, pe->id);
-    
-    printf("\n[PE%d] ========== INICIANDO EJECUCIÓN ==========\n", pe->id);
-    
-    // Ejecutar programa
+    // Run program
     pe->rf.pc = 0;
     int running = 1;
-    int max_iterations = 1000;  // Prevenir loops infinitos
     int iterations = 0;
+
+    // Allow overriding the max iterations via environment variable.
+    // SIM_MAX_ITERS: if set to 0 or negative, run without an iteration cap.
+    int max_iterations = 100000;  // default higher to allow longer loops
+    const char* env_max = getenv("SIM_MAX_ITERS");
+    if (env_max) {
+        int val = atoi(env_max);
+        max_iterations = val;
+    }
     
-    while (running && iterations < max_iterations) {
+    while (running && (max_iterations <= 0 || iterations < max_iterations)) {
         if (pe->rf.pc >= (uint64_t)prog->size) {
-            printf("[PE%d] ERROR: PC fuera de rango (%lu >= %d)\n", 
-                   pe->id, pe->rf.pc, prog->size);
+         LOGE("PE%d: PC out of range (%lu >= %d)", pe->id, pe->rf.pc, prog->size);
             break;
         }
+
+        // Debugger hook: pause/step before executing
+        dbg_before_instruction(pe->id, pe->rf.pc, &prog->code[pe->rf.pc]);
         
         running = execute_instruction(&prog->code[pe->rf.pc], 
                                       &pe->rf, 
@@ -111,20 +71,19 @@ void* pe_run(void* arg) {
         iterations++;
     }
     
-    if (iterations >= max_iterations) {
-        printf("[PE%d] ADVERTENCIA: Máximo de iteraciones alcanzado (%d)\n", 
-               pe->id, max_iterations);
+    if (max_iterations > 0 && iterations >= max_iterations) {
+        LOGW("PE%d: maximum number of iterations reached (%d)", pe->id, max_iterations);
     }
     
-    printf("\n[PE%d] ========== EJECUCIÓN TERMINADA ==========\n", pe->id);
-    printf("[PE%d] Iteraciones ejecutadas: %d\n", pe->id, iterations);
+    LOGI("PE%d: execution finished", pe->id);
+    LOGI("PE%d: iterations executed=%d", pe->id, iterations);
     
-    // Imprimir estado final de registros
+    // Print final register state
     reg_print(&pe->rf, pe->id);
     
-    // Liberar memoria del programa
+    // Free program memory
     free_program(prog);
     
-    printf("[PE%d] Finished.\n", pe->id);
+    LOGD("PE%d: done", pe->id);
     return NULL;
 }
