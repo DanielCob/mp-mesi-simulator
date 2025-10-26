@@ -201,14 +201,14 @@ void dotprod_print_results(Memory* mem) {
     printf("\nInput vectors:\n");
     printf("  Vector A: [");
     for (int i = 0; i < VECTOR_SIZE; i++) {
-        printf("%.0f", mem->data[VECTOR_A_ADDR + i]);
+        printf("%.2f", mem->data[VECTOR_A_ADDR + i]);
         if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
     
     printf("  Vector B: [");
     for (int i = 0; i < VECTOR_SIZE; i++) {
-        printf("%.0f", mem->data[VECTOR_B_ADDR + i]);
+        printf("%.2f", mem->data[VECTOR_B_ADDR + i]);
         if (i < VECTOR_SIZE - 1) printf(", ");
     }
     printf("]\n");
